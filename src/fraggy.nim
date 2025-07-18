@@ -36,7 +36,7 @@ type
     ## A specific chunk of the file
     startLine*: int
     endLine*: int
-    embedding*: seq[float]
+    embedding*: seq[float32]
     fragmentType*: string
     model*: string
     private*: bool
@@ -74,7 +74,7 @@ type
     of fraggy_folder:
       folder*: FraggyFolder
 
-proc generateEmbedding*(text: string, model: string = SimilarityEmbeddingModel): seq[float] =
+proc generateEmbedding*(text: string, model: string = SimilarityEmbeddingModel): seq[float32] =
   ## Generate an embedding for the given text using ollama.
   let embedding = localOllamaApi.generateEmbeddings(
     model = model,
