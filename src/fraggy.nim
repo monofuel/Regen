@@ -1,5 +1,5 @@
 import
-  std/[strutils, threadpool, trformat, os, times, osproc, algorithm],
+  std/[strutils, threadpool, strformat, os, times, osproc, algorithm],
   flatty, openai_leap, crunchy
 
 # flatty is used to serialize/deserialize to flat files
@@ -83,6 +83,19 @@ proc generateEmbedding*(text: string, model: string = SimilarityEmbeddingModel):
     input = text
   )
   result = embedding.data[0].embedding
+
+proc generateEmbeddingsBatch*(texts: seq[string], model: string = SimilarityEmbeddingModel): seq[seq[float32]] =
+  ## Generate embeddings for multiple texts in parallel.
+  var futures: seq[FlowVar[seq[float32]]] = @[]
+  
+  # Spawn all embedding requests in parallel
+  for text in texts:
+    futures.add(spawn generateEmbedding(text, model))
+  
+  # Collect results
+  result = @[]
+  for future in futures:
+    result.add(^future)
 
 proc writeIndexToFile*(index: FraggyIndex, filepath: string) =
   ## Write a FraggyIndex object to a file using flatty serialization.
@@ -175,12 +188,17 @@ proc findProjectFiles*(rootPath: string, extensions: seq[string]): seq[string] =
   result.sort()
 
 proc newFraggyGitRepo*(repoPath: string, extensions: seq[string]): FraggyGitRepo =
-  ## Create a new FraggyGitRepo by scanning the repository.
+  ## Create a new FraggyGitRepo by scanning the repository in parallel.
   let filePaths = findProjectFiles(repoPath, extensions)
   
-  var fraggyFiles: seq[FraggyFile] = @[]
+  # Process all files in parallel
+  var fileFutures: seq[FlowVar[FraggyFile]] = @[]
   for filePath in filePaths:
-    fraggyFiles.add(newFraggyFile(filePath))
+    fileFutures.add(spawn newFraggyFile(filePath))
+  
+  var fraggyFiles: seq[FraggyFile] = @[]
+  for future in fileFutures:
+    fraggyFiles.add(^future)
   
   result = FraggyGitRepo(
     name: extractFilename(repoPath),
@@ -190,12 +208,17 @@ proc newFraggyGitRepo*(repoPath: string, extensions: seq[string]): FraggyGitRepo
   )
 
 proc newFraggyFolder*(folderPath: string, extensions: seq[string]): FraggyFolder =
-  ## Create a new FraggyFolder by scanning the folder.
+  ## Create a new FraggyFolder by scanning the folder in parallel.
   let filePaths = findProjectFiles(folderPath, extensions)
   
-  var fraggyFiles: seq[FraggyFile] = @[]
+  # Process all files in parallel
+  var fileFutures: seq[FlowVar[FraggyFile]] = @[]
   for filePath in filePaths:
-    fraggyFiles.add(newFraggyFile(filePath))
+    fileFutures.add(spawn newFraggyFile(filePath))
+  
+  var fraggyFiles: seq[FraggyFile] = @[]
+  for future in fileFutures:
+    fraggyFiles.add(^future)
   
   result = FraggyFolder(
     path: folderPath,
@@ -203,7 +226,7 @@ proc newFraggyFolder*(folderPath: string, extensions: seq[string]): FraggyFolder
   )
 
 proc newFraggyIndex*(indexType: FraggyIndexType, path: string, extensions: seq[string]): FraggyIndex =
-  ## Create a new FraggyIndex of the specified type.
+  ## Create a new FraggyIndex of the specified type using parallel processing.
   result = FraggyIndex(version: "0.1.0", kind: indexType)
   
   case indexType

@@ -1,10 +1,13 @@
 import
-  std/[os, strformat],
+  std/[os, strformat, threadpool],
   benchy,
+  openai_leap,
   ../src/fraggy
 
 const
   WhitelistedExtensions = [".nim", ".md"]
+
+
 
 proc benchmarkFileReading() =
   ## Benchmark file discovery and reading.
@@ -87,6 +90,48 @@ proc benchmarkFullIndexing() =
     let index = newFraggyIndex(fraggy_git_repo, getCurrentDir(), @WhitelistedExtensions)
     keep index.repo.files.len
 
+proc benchmarkParallelEmbeddings() =
+  ## Benchmark embedding generation with different maxInFlight values.
+  let files = findProjectFiles(getCurrentDir(), @WhitelistedExtensions)
+  var contents: seq[string] = @[]
+  
+  # Pre-read files and take smaller samples for embedding tests
+  for filePath in files:
+    let content = readFile(filePath)
+    # Take first 300 chars to make embedding tests faster
+    let sample = if content.len > 300: content[0..<300] else: content
+    contents.add sample
+  
+  # Test with reasonable number of samples (limit to 12 for benchmark)
+  let testContents = if contents.len > 12: contents[0..<12] else: contents
+  echo &"Testing with {testContents.len} text samples"
+  
+  # Test different maxInFlight values
+  let maxInFlightValues = [1, 2, 4, 8, 16]
+  
+  for maxInFlight in maxInFlightValues:
+    let apiName = if maxInFlight == 1: "Sequential (maxInFlight=1)" else: &"Parallel (maxInFlight={maxInFlight})"
+    
+    # Create API instance with this maxInFlight setting
+    var testApi = newOpenAiApi(
+      baseUrl = "http://10.11.2.16:11434/v1",
+      apiKey = "ollama", 
+      maxInFlight = maxInFlight
+    )
+    
+    # Temporarily replace the global API
+    let originalApi = localOllamaApi
+    localOllamaApi = testApi
+    
+    timeIt &"Embeddings - {apiName}":
+      let embeddings = generateEmbeddingsBatch(testContents)
+      keep embeddings.len
+    
+    # Restore original API
+    localOllamaApi = originalApi
+
+
+
 proc main() =
   echo &"Benchmarking Fraggy indexing performance"
   echo &"Repository: {getCurrentDir()}"
@@ -115,6 +160,10 @@ proc main() =
   
   echo "=== Embedding Generation ==="
   benchmarkEmbeddings()
+  echo ""
+  
+  echo "=== Sequential vs Parallel Embeddings ==="
+  benchmarkParallelEmbeddings()
   echo ""
   
   echo "=== Full Indexing ==="

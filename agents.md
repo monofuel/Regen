@@ -42,7 +42,7 @@ This approach ensures full stack traces in CI environments and makes debugging s
 - you can run unit tests with `nimble test`
 - make sure to run unit tests! they should always pass.
 
-- `nimble integration` is manually used by engineers to run integration tests. integration tests are not automated in CI for API cost reasons.
+- `nimble benchmark` can be used to run benchmark tests.
 
 ## Gold Master Testing
 
