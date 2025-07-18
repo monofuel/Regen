@@ -1,10 +1,29 @@
 # Fraggy
 
-
 - loading files, chunking and indexing them with embeddings
-
 - strictly handles indexing. does not handle storing any data.
 - only handles operating on git repos.
+
+## Usage
+
+### Running Tests
+
+```bash
+nimble test
+```
+
+### Running Benchmarks
+
+```bash
+nimble benchmark
+```
+
+This will benchmark various aspects of the indexing process including:
+- File discovery and reading performance
+- SHA-256 hashing with crunchy
+- Fragment creation speed
+- Embedding generation with Ollama
+- Full repository indexing
 
 
 ## rough notes
