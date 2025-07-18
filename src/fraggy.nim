@@ -1,5 +1,4 @@
 import
-  std/os,
   flatty
 
 # flatty is used to serialize/deserialize to flat files
@@ -14,16 +13,36 @@ import
 # multiple embedding models may be used for a single repo, and kept in separate files.
 
 type
-  GitRepo* = object
+  FraggyFragment* = object
+    startLine*: int
+    endLine*: int
+    embedding*: seq[float]
+    fragmentType*: string
+    model*: string
+    private*: bool
+    contentScore*: int
+    hash*: string
+
+  FraggyFile* = object
+    hostname*: string
+    path*: string
+    filename*: string
+    hash*: string
+    creationTime*: float
+    lastModified*: float
+    fragments*: seq[FraggyFragment]
+
+  FraggyGitRepo* = object
     name*: string
     latestCommitHash*: string
+    files*: seq[FraggyFile]
 
-proc writeRepoToFile*(repo: GitRepo, filepath: string) =
-  ## Write a GitRepo object to a file using flatty serialization.
+proc writeRepoToFile*(repo: FraggyGitRepo, filepath: string) =
+  ## Write a FraggyGitRepo object to a file using flatty serialization.
   let data = toFlatty(repo)
   writeFile(filepath, data)
 
-proc readRepoFromFile*(filepath: string): GitRepo =
-  ## Read a GitRepo object from a file using flatty deserialization.
+proc readRepoFromFile*(filepath: string): FraggyGitRepo =
+  ## Read a FraggyGitRepo object from a file using flatty deserialization.
   let data = readFile(filepath)
-  fromFlatty(data, GitRepo)
+  fromFlatty(data, FraggyGitRepo)
