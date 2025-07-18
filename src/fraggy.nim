@@ -1,5 +1,5 @@
 import
-  flatty
+  flatty, openai_leap, std/hashes
 
 # flatty is used to serialize/deserialize to flat files
 # top level organization is a git repo, eg monofuel/fragg or monolab/racha
@@ -16,6 +16,16 @@ import
 ## a simple implementation could just chunk the file on lines
 ## a more sophisticated fragmenter could index on boundaries for the file type. eg: functions in a program, headers in markdown, etc.
 ## an even more sophisticated fragmenter could have both large and small overlapping fragments to help cover a broad range of embeddings.
+
+const
+  SimilarityEmbeddingModel* = "nomic-embed-text"
+
+# Solution-nine server
+# radeon pro w7500
+var localOllamaApi* = newOpenAiApi(
+  baseUrl = "http://localhost:11434/v1", 
+  apiKey = "ollama",
+)
 
 type
   FraggyIndexType* = enum
@@ -64,6 +74,14 @@ type
     of fraggy_folder:
       folder*: FraggyFolder
 
+proc generateEmbedding*(text: string, model: string = SimilarityEmbeddingModel): seq[float] =
+  ## Generate an embedding for the given text using ollama.
+  let embedding = localOllamaApi.generateEmbeddings(
+    model = model,
+    input = text
+  )
+  result = embedding.data[0].embedding
+
 proc writeIndexToFile*(index: FraggyIndex, filepath: string) =
   ## Write a FraggyIndex object to a file using flatty serialization.
   let data = toFlatty(index)
@@ -87,3 +105,9 @@ proc readRepoFromFile*(filepath: string): FraggyGitRepo =
     result = index.repo
   else:
     raise newException(ValueError, "File does not contain a git repo index")
+
+proc main() =
+  echo "Hello, World!"
+
+when isMainModule:
+  main()

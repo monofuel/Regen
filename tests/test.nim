@@ -7,13 +7,13 @@ from std/os import fileExists, removeFile
 suite "FraggyIndex serialization tests":
 
   test "can serialize and deserialize FraggyIndex with git repo":
-    # Create dummy fragments
+    # Create dummy fragments with real embeddings
     let fragment1 = FraggyFragment(
       startLine: 1,
       endLine: 10,
-      embedding: @[0.1, 0.2, 0.3, 0.4],
+      embedding: generateEmbedding("def calculate_sum(a, b):\n    return a + b"),
       fragmentType: "function",
-      model: "nomic-embed-text",
+      model: SimilarityEmbeddingModel,
       private: false,
       contentScore: 85,
       hash: "frag1hash"
@@ -22,9 +22,9 @@ suite "FraggyIndex serialization tests":
     let fragment2 = FraggyFragment(
       startLine: 11,
       endLine: 20,
-      embedding: @[0.5, 0.6, 0.7, 0.8],
+      embedding: generateEmbedding("# This function calculates the sum of two numbers"),
       fragmentType: "comment",
-      model: "nomic-embed-text",
+      model: SimilarityEmbeddingModel,
       private: false,
       contentScore: 60,
       hash: "frag2hash"
@@ -94,10 +94,12 @@ suite "FraggyIndex serialization tests":
     check loadedIndex.repo.files[0].hash == file1.hash
     check loadedIndex.repo.files[0].fragments.len == 2
     
-    # Verify first fragment
+    # Verify first fragment - including the embedding
     check loadedIndex.repo.files[0].fragments[0].startLine == fragment1.startLine
     check loadedIndex.repo.files[0].fragments[0].endLine == fragment1.endLine
     check loadedIndex.repo.files[0].fragments[0].fragmentType == fragment1.fragmentType
+    check loadedIndex.repo.files[0].fragments[0].model == fragment1.model
+    check loadedIndex.repo.files[0].fragments[0].embedding.len == fragment1.embedding.len
     check loadedIndex.repo.files[0].fragments[0].embedding == fragment1.embedding
     
     # Verify second file (empty)
@@ -108,7 +110,7 @@ suite "FraggyIndex serialization tests":
     removeFile(testFile)
 
   test "can serialize and deserialize FraggyIndex with folder":
-    # Create a simple folder index
+    # Create a simple folder index with real embedding
     let file1 = FraggyFile(
       hostname: "localhost",
       path: "/data/docs/readme.md",
@@ -116,7 +118,18 @@ suite "FraggyIndex serialization tests":
       hash: "readmehash",
       creationTime: 1640995400.0,
       lastModified: 1640995400.0,
-      fragments: @[]
+      fragments: @[
+        FraggyFragment(
+          startLine: 1,
+          endLine: 5,
+          embedding: generateEmbedding("# Project README\n\nThis is a sample project documentation."),
+          fragmentType: "markdown_header",
+          model: SimilarityEmbeddingModel,
+          private: false,
+          contentScore: 90,
+          hash: "readme_frag_hash"
+        )
+      ]
     )
     
     let testFolder = FraggyFolder(
@@ -151,6 +164,8 @@ suite "FraggyIndex serialization tests":
     check loadedIndex.folder.path == testFolder.path
     check loadedIndex.folder.files.len == testFolder.files.len
     check loadedIndex.folder.files[0].filename == file1.filename
+    check loadedIndex.folder.files[0].fragments.len == 1
+    check loadedIndex.folder.files[0].fragments[0].embedding.len > 0
     
     # Clean up test file
     removeFile(testFile)

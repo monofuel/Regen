@@ -20,9 +20,9 @@ proc createTestData(): FraggyIndex =
   let fragment1 = FraggyFragment(
     startLine: 1,
     endLine: 10,
-    embedding: @[0.1, 0.2, 0.3, 0.4],
+    embedding: generateEmbedding("def calculate_sum(a, b):\n    return a + b"),
     fragmentType: "function",
-    model: "nomic-embed-text",
+    model: SimilarityEmbeddingModel,
     private: false,
     contentScore: 85,
     hash: "frag1hash"
@@ -31,9 +31,9 @@ proc createTestData(): FraggyIndex =
   let fragment2 = FraggyFragment(
     startLine: 11,
     endLine: 20,
-    embedding: @[0.5, 0.6, 0.7, 0.8],
+    embedding: generateEmbedding("# This function calculates the sum of two numbers"),
     fragmentType: "comment",
-    model: "nomic-embed-text",
+    model: SimilarityEmbeddingModel,
     private: false,
     contentScore: 60,
     hash: "frag2hash"
@@ -123,11 +123,14 @@ if tmpContent == goldContent:
     deserializedFromGold.kind == testIndex.kind and
     deserializedFromGold.repo.name == testIndex.repo.name and
     deserializedFromGold.repo.latestCommitHash == testIndex.repo.latestCommitHash and
-    deserializedFromGold.repo.files.len == testIndex.repo.files.len
+    deserializedFromGold.repo.files.len == testIndex.repo.files.len and
+    deserializedFromGold.repo.files[0].fragments.len == testIndex.repo.files[0].fragments.len and
+    deserializedFromGold.repo.files[0].fragments[0].embedding.len == testIndex.repo.files[0].fragments[0].embedding.len
   )
   
   if testMatches:
     echo "✅ Deserialization verification: PASS"
+    echo &"✅ Embedding dimensions: {deserializedFromGold.repo.files[0].fragments[0].embedding.len}"
   else:
     echo "❌ Deserialization verification: FAIL"
     quit(1)
