@@ -48,7 +48,6 @@ type
 
   FraggyFile* = object
     ## A specific file that has been indexed.
-    hostname*: string
     path*: string
     filename*: string
     hash*: string
@@ -155,7 +154,6 @@ proc newFraggyFile*(filePath: string): FraggyFile =
   let fragment = newFraggyFragment(content, filePath)
   
   result = FraggyFile(
-    hostname: "localhost",
     path: filePath,
     filename: extractFilename(filePath),
     hash: createFileHash(content),

@@ -40,7 +40,6 @@ proc createTestData(): FraggyIndex =
   )
   
   let file1 = FraggyFile(
-    hostname: "localhost",
     path: "/src/main.nim",
     filename: "main.nim",
     hash: "file1hash",
@@ -50,7 +49,6 @@ proc createTestData(): FraggyIndex =
   )
   
   let file2 = FraggyFile(
-    hostname: "localhost", 
     path: "/src/utils.nim",
     filename: "utils.nim",
     hash: "file2hash",

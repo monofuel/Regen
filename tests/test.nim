@@ -32,7 +32,6 @@ suite "FraggyIndex serialization tests":
     
     # Create dummy files
     let file1 = FraggyFile(
-      hostname: "localhost",
       path: "/src/main.nim",
       filename: "main.nim",
       hash: "file1hash",
@@ -42,7 +41,6 @@ suite "FraggyIndex serialization tests":
     )
     
     let file2 = FraggyFile(
-      hostname: "localhost", 
       path: "/src/utils.nim",
       filename: "utils.nim",
       hash: "file2hash",
@@ -112,7 +110,6 @@ suite "FraggyIndex serialization tests":
   test "can serialize and deserialize FraggyIndex with folder":
     # Create a simple folder index with real embedding
     let file1 = FraggyFile(
-      hostname: "localhost",
       path: "/data/docs/readme.md",
       filename: "readme.md",
       hash: "readmehash",

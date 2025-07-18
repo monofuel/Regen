@@ -1,5 +1,5 @@
 import
-  std/[os, parseopt],
+  std/[os, parseopt, strformat],
   ../src/fraggy
 
 # Parse command line arguments
@@ -17,17 +17,37 @@ while true:
 
 const
   WhitelistedExtensions = [".nim", ".md"]
-  ProjectRoot = "Fraggy"
+
+proc validateGitCommitHash(hash: string): bool =
+  ## Validate that a git commit hash is a proper 40-character hex string.
+  if hash == "unknown":
+    return false
+  if hash.len != 40:
+    return false
+  for c in hash:
+    if c notin {'0'..'9', 'a'..'f', 'A'..'F'}:
+      return false
+  return true
 
 proc createSelfIndex(): FraggyIndex =
   ## Create a FraggyIndex of the Fraggy repository itself.
-  let projectPath = getCurrentDir() / ProjectRoot
+  let projectPath = getCurrentDir()  # We're already in the Fraggy directory
   echo "Creating self-index of Fraggy repository..."
   result = newFraggyIndex(fraggy_git_repo, projectPath, @WhitelistedExtensions)
 
 proc main() =
   ## Main test function that creates the index and compares with gold master.
   let index = createSelfIndex()
+  
+  # Validate that we have a proper git commit hash
+  if index.kind == fraggy_git_repo:
+    let commitHash = index.repo.latestCommitHash
+    if not validateGitCommitHash(commitHash):
+      echo &"✗ Invalid git commit hash: '{commitHash}'"
+      echo "Expected a 40-character hexadecimal git commit hash"
+      quit(1)
+    echo &"✓ Valid git commit hash: {commitHash}"
+  
   let tmpDir = "tests/tmp"
   let goldDir = "tests/gold"
   let outputFile = tmpDir / "self_index.flat"
