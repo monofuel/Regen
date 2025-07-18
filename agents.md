@@ -1,6 +1,7 @@
 # Fraggy
 
 - fraggy is a document fragment and AI indexing tool
+- there is a `flake.nix` for setting up the dev environment.
 
 ## Nim best practices
 

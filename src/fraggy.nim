@@ -1,5 +1,6 @@
 import
-  flatty, openai_leap
+  std/[strutils, strformat, os, times, osproc, algorithm],
+  flatty, openai_leap, crunchy
 
 # flatty is used to serialize/deserialize to flat files
 # top level organization is a git repo, eg monofuel/fragg or monolab/racha
@@ -105,6 +106,111 @@ proc readRepoFromFile*(filepath: string): FraggyGitRepo =
     result = index.repo
   else:
     raise newException(ValueError, "File does not contain a git repo index")
+
+proc createFileHash*(content: string): string =
+  ## Create a SHA-256 hash of file content for tracking changes.
+  result = sha256(content).toHex()
+
+proc getGitCommitHash*(repoPath: string): string =
+  ## Get the current git commit hash.
+  try:
+    let (output, exitCode) = execCmdEx(&"cd {repoPath} && git rev-parse HEAD")
+    if exitCode == 0:
+      result = output.strip()
+    else:
+      result = "unknown"
+  except:
+    result = "unknown"
+
+proc isGitDirty*(repoPath: string): bool =
+  ## Check if the git repository has uncommitted changes.
+  try:
+    let (output, exitCode) = execCmdEx(&"cd {repoPath} && git status --porcelain")
+    result = exitCode != 0 or output.strip().len > 0
+  except:
+    result = true
+
+proc newFraggyFragment*(content: string, filePath: string, startLine: int = 1, endLine: int = -1): FraggyFragment =
+  ## Create a new FraggyFragment from content.
+  let actualEndLine = if endLine == -1: content.split('\n').len else: endLine
+  let embedding = generateEmbedding(content)
+  
+  result = FraggyFragment(
+    startLine: startLine,
+    endLine: actualEndLine,
+    embedding: embedding,
+    fragmentType: "file",
+    model: SimilarityEmbeddingModel,
+    private: false,
+    contentScore: if content.len > 1000: 90 else: 70,
+    hash: createFileHash(content)
+  )
+
+proc newFraggyFile*(filePath: string): FraggyFile =
+  ## Create a new FraggyFile by reading and processing the file.
+  let content = readFile(filePath)
+  let fileInfo = getFileInfo(filePath)
+  let fragment = newFraggyFragment(content, filePath)
+  
+  result = FraggyFile(
+    hostname: "localhost",
+    path: filePath,
+    filename: extractFilename(filePath),
+    hash: createFileHash(content),
+    creationTime: fileInfo.creationTime.toUnix().float,
+    lastModified: fileInfo.lastWriteTime.toUnix().float,
+    fragments: @[fragment]
+  )
+
+proc findProjectFiles*(rootPath: string, extensions: seq[string]): seq[string] =
+  ## Find all files with specified extensions in the project directory.
+  result = @[]
+  
+  for path in walkDirRec(rootPath, yieldFilter = {pcFile}):
+    let ext = splitFile(path).ext
+    if ext in extensions:
+      result.add(path)
+  
+  # Sort for consistent ordering
+  result.sort()
+
+proc newFraggyGitRepo*(repoPath: string, extensions: seq[string]): FraggyGitRepo =
+  ## Create a new FraggyGitRepo by scanning the repository.
+  let filePaths = findProjectFiles(repoPath, extensions)
+  
+  var fraggyFiles: seq[FraggyFile] = @[]
+  for filePath in filePaths:
+    fraggyFiles.add(newFraggyFile(filePath))
+  
+  result = FraggyGitRepo(
+    name: extractFilename(repoPath),
+    latestCommitHash: getGitCommitHash(repoPath),
+    isDirty: isGitDirty(repoPath),
+    files: fraggyFiles
+  )
+
+proc newFraggyFolder*(folderPath: string, extensions: seq[string]): FraggyFolder =
+  ## Create a new FraggyFolder by scanning the folder.
+  let filePaths = findProjectFiles(folderPath, extensions)
+  
+  var fraggyFiles: seq[FraggyFile] = @[]
+  for filePath in filePaths:
+    fraggyFiles.add(newFraggyFile(filePath))
+  
+  result = FraggyFolder(
+    path: folderPath,
+    files: fraggyFiles
+  )
+
+proc newFraggyIndex*(indexType: FraggyIndexType, path: string, extensions: seq[string]): FraggyIndex =
+  ## Create a new FraggyIndex of the specified type.
+  result = FraggyIndex(version: "0.1.0", kind: indexType)
+  
+  case indexType
+  of fraggy_git_repo:
+    result.repo = newFraggyGitRepo(path, extensions)
+  of fraggy_folder:
+    result.folder = newFraggyFolder(path, extensions)
 
 proc main() =
   echo "Hello, World!"
