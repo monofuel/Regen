@@ -1,5 +1,7 @@
 # Fraggy
 
+![why wouldn't you want a miqo'te reading all your documents and indexing everything](static/ComfyUI_00126_.png)
+
 - loading files, chunking and indexing them with embeddings
 - strictly handles indexing. does not handle storing any data.
 - only handles operating on git repos.
