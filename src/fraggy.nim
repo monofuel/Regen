@@ -1,5 +1,5 @@
 import
-  std/[strutils, strformat, os, times, osproc, algorithm],
+  std/[strutils, threadpool, trformat, os, times, osproc, algorithm],
   flatty, openai_leap, crunchy
 
 # flatty is used to serialize/deserialize to flat files

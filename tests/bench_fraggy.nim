@@ -50,7 +50,7 @@ proc benchmarkEmbeddings() =
   # Only test first 3 files to keep benchmark reasonable
   let sampleContents = if contents.len > 3: contents[0..<3] else: contents
   
-  timeIt "Embedding Generation x100", 100:
+  timeIt "Embedding Generation":
     for content in sampleContents:
       let embedding = generateEmbedding(content)
       keep embedding.len
