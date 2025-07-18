@@ -1,5 +1,5 @@
 import
-  flatty, openai_leap, std/hashes
+  flatty, openai_leap
 
 # flatty is used to serialize/deserialize to flat files
 # top level organization is a git repo, eg monofuel/fragg or monolab/racha

@@ -15,11 +15,11 @@
           buildInputs = with pkgs; [
             nim
             nimble
-            curl
+            curlFull
           ];
           
           shellHook = ''
-            export LD_LIBRARY_PATH=${pkgs.curl}/lib:$LD_LIBRARY_PATH
+            export LD_LIBRARY_PATH=${pkgs.curl.out}/lib:$LD_LIBRARY_PATH
           '';
         };
     };
