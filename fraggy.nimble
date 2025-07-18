@@ -7,4 +7,4 @@ srcDir = "src"
 
 requires "nim >= 2.0.0"
 requires "flatty >= 0.3.4"
-requires "openai_leap >= 7.0.0"
+requires "https://github.com/monofuel/openai_leap.git"
