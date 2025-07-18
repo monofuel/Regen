@@ -15,7 +15,7 @@ while true:
   of cmdArgument:
     discard
 
-proc createTestData(): FraggyGitRepo =
+proc createTestData(): FraggyIndex =
   ## Create consistent test data for serialization testing.
   let fragment1 = FraggyFragment(
     startLine: 1,
@@ -59,10 +59,17 @@ proc createTestData(): FraggyGitRepo =
     fragments: @[]  # Empty file
   )
   
-  result = FraggyGitRepo(
+  let testRepo = FraggyGitRepo(
     name: "test-repo",
     latestCommitHash: "abc123def456",
+    isDirty: false,
     files: @[file1, file2]
+  )
+  
+  result = FraggyIndex(
+    version: "0.1.0",
+    kind: fraggy_git_repo,
+    repo: testRepo
   )
 
 const
@@ -70,7 +77,7 @@ const
   goldFile = "tests/gold/test_fraggy_gold.flat"
 
 # Create test data and serialize to tmp file
-let testRepo = createTestData()
+let testIndex = createTestData()
 
 # Create tmp directory if it doesn't exist
 createDir(tmpFile.parentDir)
@@ -80,7 +87,7 @@ if fileExists(tmpFile):
   removeFile(tmpFile)
 
 # Serialize to tmp file
-writeRepoToFile(testRepo, tmpFile)
+writeIndexToFile(testIndex, tmpFile)
 
 # Update gold file if flag is set
 if updateGold:
@@ -110,11 +117,13 @@ if tmpContent == goldContent:
   echo "✅ Test passed: Fraggy binary serialization matches gold file"
   
   # Also verify we can deserialize both files successfully
-  let deserializedFromGold = readRepoFromFile(goldFile)
+  let deserializedFromGold = readIndexFromFile(goldFile)
   let testMatches = (
-    deserializedFromGold.name == testRepo.name and
-    deserializedFromGold.latestCommitHash == testRepo.latestCommitHash and
-    deserializedFromGold.files.len == testRepo.files.len
+    deserializedFromGold.version == testIndex.version and
+    deserializedFromGold.kind == testIndex.kind and
+    deserializedFromGold.repo.name == testIndex.repo.name and
+    deserializedFromGold.repo.latestCommitHash == testIndex.repo.latestCommitHash and
+    deserializedFromGold.repo.files.len == testIndex.repo.files.len
   )
   
   if testMatches:
