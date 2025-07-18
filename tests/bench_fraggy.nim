@@ -130,6 +130,81 @@ proc benchmarkParallelEmbeddings() =
     # Restore original API
     localOllamaApi = originalApi
 
+proc benchmarkCosineSimilarity() =
+  ## Benchmark cosine similarity calculation.
+  # Create test embeddings (typical embedding size for nomic-embed-text is 768)
+  let embeddingSize = 768
+  var embedding1: seq[float32] = @[]
+  var embedding2: seq[float32] = @[]
+  
+  # Generate random embeddings for testing
+  for i in 0..<embeddingSize:
+    embedding1.add(float32(i) / float32(embeddingSize))
+    embedding2.add(float32(i * 2) / float32(embeddingSize))
+  
+  timeIt "Cosine Similarity (768D vectors)":
+    let similarity = cosineSimilarity(embedding1, embedding2)
+    keep similarity
+
+proc benchmarkSimilaritySearch() =
+  ## Benchmark similarity search performance.
+  echo "Setting up similarity search benchmark..."
+  
+  # Create a test index with multiple files and fragments
+  let files = findProjectFiles(getCurrentDir(), @WhitelistedExtensions)
+  let testFiles = if files.len > 5: files[0..<5] else: files  # Limit to 5 files for benchmark
+  
+  if testFiles.len == 0:
+    echo "No files found for similarity search benchmark"
+    return
+  
+  # Create test index with actual content
+  var fraggyFiles: seq[FraggyFile] = @[]
+  for filePath in testFiles:
+    let fraggyFile = newFraggyFile(filePath)
+    fraggyFiles.add(fraggyFile)
+  
+  let testRepo = FraggyGitRepo(
+    name: "benchmark-repo",
+    latestCommitHash: "test123",
+    isDirty: false,
+    files: fraggyFiles
+  )
+  
+  let testIndex = FraggyIndex(
+    version: "0.1.0",
+    kind: fraggy_git_repo,
+    repo: testRepo
+  )
+  
+  echo &"Index created with {testIndex.repo.files.len} files"
+  var totalFragments = 0
+  for file in testIndex.repo.files:
+    totalFragments += file.fragments.len
+  echo &"Total fragments: {totalFragments}"
+  
+  # Test different query types
+  let queries = @[
+    "function definition",
+    "import statement", 
+    "error handling",
+    "data structure",
+    "algorithm implementation"
+  ]
+  
+  for query in queries:
+    let queryStr = query  # Copy to avoid capture issues
+    timeIt &"Similarity Search: '{queryStr}' (top 5)":
+      let results = findSimilarFragments(testIndex, queryStr, maxResults = 5)
+      keep results.len
+  
+  # Test with different result limits
+  let resultLimits = [1, 5, 10, 20]
+  for limit in resultLimits:
+    timeIt &"Similarity Search: top {limit} results":
+      let results = findSimilarFragments(testIndex, "function", maxResults = limit)
+      keep results.len
+
 
 
 proc main() =
@@ -168,6 +243,11 @@ proc main() =
   
   echo "=== Full Indexing ==="
   benchmarkFullIndexing()
+  echo ""
+  
+  echo "=== Similarity Operations ==="
+  benchmarkCosineSimilarity()
+  benchmarkSimilaritySearch()
   echo ""
   
   echo "Benchmark complete!"

@@ -43,6 +43,7 @@ This approach ensures full stack traces in CI environments and makes debugging s
 - make sure to run unit tests! they should always pass.
 
 - `nimble benchmark` can be used to run benchmark tests.
+- benchmark is at ./tests/bench_fraggy.nim
 
 ## Gold Master Testing
 
