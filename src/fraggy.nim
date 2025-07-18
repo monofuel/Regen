@@ -25,7 +25,7 @@ const
 # Solution-nine server
 # radeon pro w7500
 var localOllamaApi* = newOpenAiApi(
-  baseUrl = "http://localhost:11434/v1", 
+  baseUrl = "http://10.11.2.16:11434/v1", 
   apiKey = "ollama",
   maxInFlight = MaxInFlight
 )
