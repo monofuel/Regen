@@ -11,6 +11,13 @@
 - 📁 Works with git repos and local folders
 - 🧠 Uses Ollama for local embeddings (`nomic-embed-text`)
 
+
+## 📋 TODO
+
+- [ ] support query - document embeddings in addition to similarity search
+- [ ] 🌐 OpenAPI server interface
+- [ ] 🔌 MCP (Model Context Protocol) server support
+
 ## 🛠️ Usage
 
 ### Running Tests
@@ -44,9 +51,3 @@ Generates embeddings for text using Ollama:
 ```nim
 let embedding = generateEmbedding("some text", "nomic-embed-text")
 ```
-
-## 📋 TODO
-
-- [ ] support query - document embeddings in addition to similarity search
-- [ ] 🌐 OpenAPI server interface
-- [ ] 🔌 MCP (Model Context Protocol) server support
