@@ -1,5 +1,5 @@
 import
-  std/[strutils, threadpool, strformat, os, times, osproc, algorithm],
+  std/[strutils, threadpool, strformat, os, times, osproc, algorithm, math],
   flatty, openai_leap, crunchy
 
 # flatty is used to serialize/deserialize to flat files
@@ -234,6 +234,73 @@ proc newFraggyIndex*(indexType: FraggyIndexType, path: string, extensions: seq[s
     result.repo = newFraggyGitRepo(path, extensions)
   of fraggy_folder:
     result.folder = newFraggyFolder(path, extensions)
+
+type
+  SimilarityResult* = object
+    ## A result from similarity search
+    fragment*: FraggyFragment
+    file*: FraggyFile
+    similarity*: float32
+
+proc cosineSimilarity*(a, b: seq[float32]): float32 =
+  ## Calculate cosine similarity between two embedding vectors.
+  if a.len != b.len:
+    raise newException(ValueError, "Vectors must have the same length")
+  
+  var dotProduct = 0.0'f32
+  var normA = 0.0'f32
+  var normB = 0.0'f32
+  
+  for i in 0..<a.len:
+    dotProduct += a[i] * b[i]
+    normA += a[i] * a[i]
+    normB += b[i] * b[i]
+  
+  let magnitude = sqrt(normA) * sqrt(normB)
+  if magnitude == 0.0'f32:
+    return 0.0'f32
+  
+  result = dotProduct / magnitude
+
+proc findSimilarFragments*(index: FraggyIndex, queryText: string, maxResults: int = 10, model: string = SimilarityEmbeddingModel): seq[SimilarityResult] =
+  ## Find the most similar fragments to the query text.
+  let queryEmbedding = generateEmbedding(queryText, model)
+  var results: seq[SimilarityResult] = @[]
+  
+  # Collect all fragments with their similarity scores
+  case index.kind
+  of fraggy_git_repo:
+    for file in index.repo.files:
+      for fragment in file.fragments:
+        if fragment.model == model:
+          let similarity = cosineSimilarity(queryEmbedding, fragment.embedding)
+          results.add(SimilarityResult(
+            fragment: fragment,
+            file: file,
+            similarity: similarity
+          ))
+  of fraggy_folder:
+    for file in index.folder.files:
+      for fragment in file.fragments:
+        if fragment.model == model:
+          let similarity = cosineSimilarity(queryEmbedding, fragment.embedding)
+          results.add(SimilarityResult(
+            fragment: fragment,
+            file: file,
+            similarity: similarity
+          ))
+  
+  # Sort by similarity (highest first) and return top results
+  results.sort(proc(a, b: SimilarityResult): int =
+    if a.similarity > b.similarity: -1
+    elif a.similarity < b.similarity: 1
+    else: 0
+  )
+  
+  if results.len > maxResults:
+    result = results[0..<maxResults]
+  else:
+    result = results
 
 proc main() =
   echo "Hello, World!"

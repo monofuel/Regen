@@ -166,3 +166,146 @@ suite "FraggyIndex serialization tests":
     
     # Clean up test file
     removeFile(testFile)
+
+suite "Similarity search tests":
+
+  test "cosine similarity calculation":
+    # Test identical vectors
+    let vec1 = @[1.0'f32, 0.0'f32, 0.0'f32]
+    let vec2 = @[1.0'f32, 0.0'f32, 0.0'f32]
+    check cosineSimilarity(vec1, vec2) == 1.0'f32
+    
+    # Test orthogonal vectors
+    let vec3 = @[1.0'f32, 0.0'f32, 0.0'f32]
+    let vec4 = @[0.0'f32, 1.0'f32, 0.0'f32]
+    check cosineSimilarity(vec3, vec4) == 0.0'f32
+    
+    # Test opposite vectors
+    let vec5 = @[1.0'f32, 0.0'f32, 0.0'f32]
+    let vec6 = @[-1.0'f32, 0.0'f32, 0.0'f32]
+    check cosineSimilarity(vec5, vec6) == -1.0'f32
+    
+    # Test partial similarity
+    let vec7 = @[1.0'f32, 1.0'f32, 0.0'f32]
+    let vec8 = @[1.0'f32, 0.0'f32, 0.0'f32]
+    let similarity = cosineSimilarity(vec7, vec8)
+    check abs(similarity - 0.7071067) < 0.0001  # Should be 1/sqrt(2) ≈ 0.7071
+
+  test "similarity search with git repo index":
+    # Create test fragments with known embeddings
+    let fragment1 = FraggyFragment(
+      startLine: 1,
+      endLine: 10,
+      embedding: generateEmbedding("function to calculate sum of two numbers"),
+      fragmentType: "function",
+      model: SimilarityEmbeddingModel,
+      private: false,
+      contentScore: 85,
+      hash: "frag1hash"
+    )
+    
+    let fragment2 = FraggyFragment(
+      startLine: 11,
+      endLine: 20,
+      embedding: generateEmbedding("function to calculate product of two numbers"),
+      fragmentType: "function",
+      model: SimilarityEmbeddingModel,
+      private: false,
+      contentScore: 80,
+      hash: "frag2hash"
+    )
+    
+    let fragment3 = FraggyFragment(
+      startLine: 21,
+      endLine: 30,
+      embedding: generateEmbedding("user interface component for displaying buttons"),
+      fragmentType: "component",
+      model: SimilarityEmbeddingModel,
+      private: false,
+      contentScore: 70,
+      hash: "frag3hash"
+    )
+    
+    # Create test file
+    let testFile = FraggyFile(
+      path: "/src/math.nim",
+      filename: "math.nim",
+      hash: "mathfilehash",
+      creationTime: 1640995200.0,
+      lastModified: 1640995200.0,
+      fragments: @[fragment1, fragment2, fragment3]
+    )
+    
+    # Create test repo
+    let testRepo = FraggyGitRepo(
+      name: "test-repo",
+      latestCommitHash: "abc123def456",
+      isDirty: false,
+      files: @[testFile]
+    )
+    
+    # Create test index
+    let testIndex = FraggyIndex(
+      version: "0.1.0",
+      kind: fraggy_git_repo,
+      repo: testRepo
+    )
+    
+    # Test similarity search for math-related query
+    let mathResults = findSimilarFragments(testIndex, "addition of numbers", maxResults = 5)
+    check mathResults.len > 0
+    check mathResults[0].similarity > 0.0  # Should find some similarity
+    
+    # The first result should be the sum function (fragment1) since it's most similar
+    # to "addition of numbers"
+    check mathResults[0].fragment.hash == "frag1hash"
+    
+    # Test similarity search for UI-related query
+    let uiResults = findSimilarFragments(testIndex, "button component interface", maxResults = 5)
+    check uiResults.len > 0
+    
+    # The UI fragment should be most similar to the UI query
+    check uiResults[0].fragment.hash == "frag3hash"
+    
+    # Test with max results limit
+    let limitedResults = findSimilarFragments(testIndex, "calculate", maxResults = 2)
+    check limitedResults.len <= 2
+
+  test "similarity search with folder index":
+    # Create a test fragment
+    let fragment = FraggyFragment(
+      startLine: 1,
+      endLine: 5,
+      embedding: generateEmbedding("project documentation and setup instructions"),
+      fragmentType: "markdown_header",
+      model: SimilarityEmbeddingModel,
+      private: false,
+      contentScore: 90,
+      hash: "readme_frag_hash"
+    )
+    
+    let testFile = FraggyFile(
+      path: "/docs/readme.md",
+      filename: "readme.md",
+      hash: "readmehash",
+      creationTime: 1640995400.0,
+      lastModified: 1640995400.0,
+      fragments: @[fragment]
+    )
+    
+    let testFolder = FraggyFolder(
+      path: "/docs",
+      files: @[testFile]
+    )
+    
+    let testIndex = FraggyIndex(
+      version: "0.1.0",
+      kind: fraggy_folder,
+      folder: testFolder
+    )
+    
+    # Test similarity search
+    let results = findSimilarFragments(testIndex, "how to setup the project", maxResults = 5)
+    check results.len > 0
+    check results[0].similarity > 0.0
+    check results[0].file.filename == "readme.md"
