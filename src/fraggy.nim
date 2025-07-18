@@ -20,12 +20,14 @@ import
 
 const
   SimilarityEmbeddingModel* = "nomic-embed-text"
+  MaxInFlight* = 10
 
 # Solution-nine server
 # radeon pro w7500
 var localOllamaApi* = newOpenAiApi(
   baseUrl = "http://localhost:11434/v1", 
   apiKey = "ollama",
+  maxInFlight = MaxInFlight
 )
 
 type
