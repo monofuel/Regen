@@ -3,6 +3,18 @@
 - fraggy is a document fragment and AI indexing tool
 - there is a `flake.nix` for setting up the dev environment.
 
+## Organization
+
+- src/fraggy.nim handles the CLI interface
+- src/index.nim is for embeddings and building the indexes
+- src/configs.nim is for the configuration
+- src/openapi.nim is for the swagger openapi API
+- src/search.nim is for traditional keyword / regex search
+- src/types.nim contains all types (to avoid circular dependencies)
+
+- types.nim and configs.nim should not import other files, to avoid circular dependencies.
+- any 'magic number' constants should live in configs.nim
+
 ## Nim best practices
 
 **Prefer letting errors bubble up naturally** - Nim's stack traces are excellent for debugging:

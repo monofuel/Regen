@@ -2,7 +2,10 @@
 
 import
   std/[strutils, strformat, os],
-  ./types, ./config, ./index, ./search, ./openapi
+  ./types, ./configs, ./index, ./search, ./openapi
+
+# re-export our internal modules for convenience
+export types, configs, index, search, openapi
 
 # flatty is used to serialize/deserialize to flat files
 # top level organization is a git repo, eg monofuel/fragg or monolab/racha
@@ -41,45 +44,6 @@ proc printHelp*() =
   echo ""
   echo "Other:"
   echo "  help                        Show this help message"
-
-proc indexAll*() =
-  ## Index all configured folders and git repositories.
-  let config = loadConfig()
-  
-  echo "Indexing all configured paths..."
-  
-  # Index folders
-  for folderPath in config.folders:
-    if dirExists(folderPath):
-      echo &"Indexing folder: {folderPath}"
-      let folder = newFraggyFolder(folderPath, config.extensions)
-      let index = FraggyIndex(version: ConfigVersion, kind: fraggy_folder, folder: folder)
-      
-      # Save index to ~/.fraggy/folders/{hash}.flat
-      let folderHash = createFileHash(folderPath)
-      let indexPath = getHomeDir() / ".fraggy" / "folders" / &"{folderHash}.flat"
-      createDir(parentDir(indexPath))
-      writeIndexToFile(index, indexPath)
-      echo &"  Saved index to: {indexPath}"
-    else:
-      echo &"Warning: Folder does not exist: {folderPath}"
-  
-  # Index git repos
-  for repoPath in config.gitRepos:
-    if dirExists(repoPath):
-      echo &"Indexing git repo: {repoPath}"
-      let repo = newFraggyGitRepo(repoPath, config.extensions)
-      let index = FraggyIndex(version: ConfigVersion, kind: fraggy_git_repo, repo: repo)
-      
-      # Save index to ~/.fraggy/repos/{repo_name}_{commit_hash}.flat
-      let repoName = extractFilename(repoPath)
-      let commitHash = getGitCommitHash(repoPath)
-      let indexPath = getHomeDir() / ".fraggy" / "repos" / &"{repoName}_{commitHash}.flat"
-      createDir(parentDir(indexPath))
-      writeIndexToFile(index, indexPath)
-      echo &"  Saved index to: {indexPath}"
-    else:
-      echo &"Warning: Git repo does not exist: {repoPath}"
 
 proc performRipgrepSearch*(args: seq[string]) =
   ## Perform a ripgrep search from command line arguments.
