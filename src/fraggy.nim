@@ -1,5 +1,5 @@
 import
-  std/[strutils, threadpool, strformat, os, times, osproc, algorithm, math, re],
+  std/[strutils, threadpool, strformat, os, times, osproc, algorithm, math, json],
   flatty, openai_leap, crunchy
 
 # flatty is used to serialize/deserialize to flat files
@@ -311,113 +311,144 @@ proc findSimilarFragments*(index: FraggyIndex, queryText: string, maxResults: in
     result = results
 
 proc ripgrepSearch*(index: FraggyIndex, pattern: string, caseSensitive: bool = true, maxResults: int = 100): seq[RipgrepResult] =
-  ## Search through all files in the index using regex pattern (like ripgrep).
+  ## Search through all files in the index using actual ripgrep (rg) command.
   ## Returns matching lines with file info and line numbers.
   var results: seq[RipgrepResult] = @[]
-  var regex: Regex
+  
+  # Get the search directory based on index type
+  let searchPath = case index.kind
+    of fraggy_git_repo:
+      if index.repo.files.len > 0: index.repo.files[0].path.parentDir() else: "."
+    of fraggy_folder:
+      index.folder.path
+  
+  # Build ripgrep command (don't limit per file, we'll limit total results)
+  var cmd = "rg --json --line-number --column"
+  if not caseSensitive:
+    cmd.add(" --ignore-case")
+  
+  # Add the pattern and search path
+  cmd.add(" " & pattern.quoteShell() & " " & searchPath.quoteShell())
   
   try:
-    if caseSensitive:
-      regex = re(pattern)
-    else:
-      regex = re("(?i)" & pattern)
-  except RegexError:
-    # Invalid regex pattern, return empty results
+    let (output, exitCode) = execCmdEx(cmd)
+    
+    # If rg returns non-zero (no matches or error), return empty results
+    if exitCode != 0:
+      return @[]
+    
+    # Parse JSON output from ripgrep
+    for line in output.strip().split('\n'):
+      if line.strip().len == 0:
+        continue
+        
+      # Stop if we've reached max results
+      if results.len >= maxResults:
+        break
+        
+      try:
+        let jsonData = parseJson(line)
+        
+        # Only process "match" type entries
+        if jsonData.hasKey("type") and jsonData["type"].getStr() == "match":
+          let data = jsonData["data"]
+          let filePath = data["path"]["text"].getStr()
+          let lineNum = data["line_number"].getInt()
+          let lineText = data["lines"]["text"].getStr().strip()  # Strip newlines
+          let submatches = data["submatches"]
+          
+          # Find the corresponding FraggyFile
+          var fraggyFile: FraggyFile
+          var fileFound = false
+          
+          case index.kind
+          of fraggy_git_repo:
+            for file in index.repo.files:
+              if file.path == filePath or file.path.endsWith(filePath):
+                fraggyFile = file
+                fileFound = true
+                break
+          of fraggy_folder:
+            for file in index.folder.files:
+              if file.path == filePath or file.path.endsWith(filePath):
+                fraggyFile = file
+                fileFound = true
+                break
+          
+          # If we found the file in our index, create a result for each submatch
+          if fileFound:
+            for submatch in submatches:
+              if results.len >= maxResults:
+                break
+              results.add(RipgrepResult(
+                file: fraggyFile,
+                lineNumber: lineNum,
+                lineContent: lineText,
+                matchStart: submatch["start"].getInt(),
+                matchEnd: submatch["end"].getInt() - 1  # ripgrep uses exclusive end
+              ))
+            
+      except JsonParsingError, KeyError:
+        # Skip malformed JSON lines
+        continue
+        
+  except OSError:
+    # ripgrep command failed, return empty results
     return @[]
-  
-  case index.kind
-  of fraggy_git_repo:
-    for file in index.repo.files:
-      if results.len >= maxResults:
-        break
-      
-      # Read the actual file content
-      if not fileExists(file.path):
-        continue
-      
-      try:
-        let content = readFile(file.path)
-        let lines = content.split('\n')
-        
-        for i, line in lines:
-          if results.len >= maxResults:
-            break
-          
-          let bounds = line.findBounds(regex)
-          if bounds.first != -1:
-            results.add(RipgrepResult(
-              file: file,
-              lineNumber: i + 1, # 1-indexed line numbers
-              lineContent: line,
-              matchStart: bounds.first,
-              matchEnd: bounds.last
-            ))
-      except IOError, OSError:
-        # Skip files that can't be read
-        continue
-        
-  of fraggy_folder:
-    for file in index.folder.files:
-      if results.len >= maxResults:
-        break
-      
-      # Read the actual file content
-      if not fileExists(file.path):
-        continue
-      
-      try:
-        let content = readFile(file.path)
-        let lines = content.split('\n')
-        
-        for i, line in lines:
-          if results.len >= maxResults:
-            break
-          
-          let bounds = line.findBounds(regex)
-          if bounds.first != -1:
-            results.add(RipgrepResult(
-              file: file,
-              lineNumber: i + 1, # 1-indexed line numbers
-              lineContent: line,
-              matchStart: bounds.first,
-              matchEnd: bounds.last
-            ))
-      except IOError, OSError:
-        # Skip files that can't be read
-        continue
   
   result = results
 
 proc ripgrepSearchInFile*(filePath: string, pattern: string, caseSensitive: bool = true): seq[tuple[lineNumber: int, lineContent: string, matchStart: int, matchEnd: int]] =
-  ## Search for pattern in a single file (helper function).
+  ## Search for pattern in a single file using actual ripgrep.
   var results: seq[tuple[lineNumber: int, lineContent: string, matchStart: int, matchEnd: int]] = @[]
-  var regex: Regex
-  
-  try:
-    if caseSensitive:
-      regex = re(pattern)
-    else:
-      regex = re("(?i)" & pattern)
-  except RegexError:
-    return @[]
   
   if not fileExists(filePath):
     return @[]
   
+  # Build ripgrep command for single file
+  var cmd = "rg --json --line-number --column"
+  if not caseSensitive:
+    cmd.add(" --ignore-case")
+  
+  cmd.add(" " & pattern.quoteShell() & " " & filePath.quoteShell())
+  
   try:
-    let content = readFile(filePath)
-    let lines = content.split('\n')
+    let (output, exitCode) = execCmdEx(cmd)
     
-    for i, line in lines:
-      let bounds = line.findBounds(regex)
-      if bounds.first != -1:
-        results.add((
-          lineNumber: i + 1,
-          lineContent: line,
-          matchStart: bounds.first,
-          matchEnd: bounds.last
-        ))
-  except IOError, OSError:
+    # If rg returns non-zero (no matches or error), return empty results
+    if exitCode != 0:
+      return @[]
+    
+    # Parse JSON output from ripgrep
+    for line in output.strip().split('\n'):
+      if line.strip().len == 0:
+        continue
+        
+      try:
+        let jsonData = parseJson(line)
+        
+        # Only process "match" type entries
+        if jsonData.hasKey("type") and jsonData["type"].getStr() == "match":
+          let data = jsonData["data"]
+          let lineNum = data["line_number"].getInt()
+          let lineText = data["lines"]["text"].getStr().strip()  # Strip newlines
+          let submatches = data["submatches"]
+          
+          # Add a result for each submatch
+          for submatch in submatches:
+            results.add((
+              lineNumber: lineNum,
+              lineContent: lineText,
+              matchStart: submatch["start"].getInt(),
+              matchEnd: submatch["end"].getInt() - 1  # ripgrep uses exclusive end
+            ))
+            
+      except JsonParsingError, KeyError:
+        # Skip malformed JSON lines
+        continue
+        
+  except OSError:
+    # ripgrep command failed
     return @[]
   
   result = results

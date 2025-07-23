@@ -70,8 +70,13 @@ suite "Ripgrep Search Tests":
   
   test "Multiple matches in same line":
     let results = ripgrepSearchInFile("tests/testfiles/multitest.txt", "hello")
-    check results.len == 1  # One line with multiple matches
+    check results.len == 2  # Two separate matches for "hello" in the same line
     check results[0].lineContent.strip() == "hello world hello again"
+    check results[1].lineContent.strip() == "hello world hello again"
+    # First "hello" should start at position 0
+    check results[0].matchStart == 0
+    # Second "hello" should start at position 12
+    check results[1].matchStart == 12
   
   test "Line number accuracy":
     let results = ripgrepSearchInFile("tests/testfiles/linetest.txt", "target")
