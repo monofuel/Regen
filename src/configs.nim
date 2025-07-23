@@ -23,6 +23,16 @@ proc getConfigPath*(): string =
     createDir(configDir)
   result = configDir / "config.json"
 
+proc saveConfig*(config: FraggyConfig) =
+  ## Save configuration to ~/.fraggy/config.json.
+  let configPath = getConfigPath()
+  try:
+    let configData = toJson(config)
+    writeFile(configPath, configData)
+    info &"Config saved to {configPath}"
+  except:
+    error &"Error saving config to {configPath}: {getCurrentExceptionMsg()}"
+
 proc loadConfig*(): FraggyConfig =
   ## Load configuration from ~/.fraggy/config.json.
   let configPath = getConfigPath()
@@ -47,6 +57,8 @@ proc loadConfig*(): FraggyConfig =
     if result.apiKey.len == 0:
       result.apiKey = generateApiKey()
       info "Generated API key for existing config"
+      # Save the updated config with the new API key
+      saveConfig(result)
   except:
     error &"Error loading config from {configPath}: {getCurrentExceptionMsg()}"
     # Return default config on error
@@ -58,16 +70,6 @@ proc loadConfig*(): FraggyConfig =
       embeddingModel: SimilarityEmbeddingModel,
       apiKey: generateApiKey()
     )
-
-proc saveConfig*(config: FraggyConfig) =
-  ## Save configuration to ~/.fraggy/config.json.
-  let configPath = getConfigPath()
-  try:
-    let configData = toJson(config)
-    writeFile(configPath, configData)
-    info &"Config saved to {configPath}"
-  except:
-    error &"Error saving config to {configPath}: {getCurrentExceptionMsg()}"
 
 proc addFolderToConfig*(folderPath: string) =
   ## Add a folder path to the config.
@@ -106,6 +108,29 @@ proc addGitRepoToConfig*(repoPath: string) =
     info &"Added git repo to config: {absPath}"
   else:
     info &"Git repo already in config: {absPath}"
+
+proc findAllIndexes*(): seq[string] =
+  ## Find all available index files from configured folders and repos.
+  result = @[]
+  
+  let fraggyDir = getHomeDir() / ".fraggy"
+  
+  # Find folder indexes
+  let foldersDir = fraggyDir / "folders"
+  if dirExists(foldersDir):
+    for file in walkDir(foldersDir):
+      if file.kind == pcFile and file.path.endsWith(".flat"):
+        result.add(file.path)
+  
+  # Find repo indexes
+  let reposDir = fraggyDir / "repos"
+  if dirExists(reposDir):
+    for file in walkDir(reposDir):
+      if file.kind == pcFile and file.path.endsWith(".flat"):
+        result.add(file.path)
+  
+  if result.len == 0:
+    warn "No indexes found. Run 'fraggy --index-all' first to create indexes."
 
 proc showConfig*() =
   ## Display the current configuration.

@@ -11,13 +11,11 @@ type
     pattern*: string
     caseSensitive*: bool
     maxResults*: int
-    indexPath*: string
 
   EmbeddingSearchRequest* = object
     query*: string
     maxResults*: int
     model*: string
-    indexPath*: string
 
   # Simplified ripgrep-like response format
   RipgrepResponse* = object
@@ -143,25 +141,40 @@ proc handleRipgrepSearch*(request: Request) =
   try:
     let reqData = fromJson(request.body, RipgrepRequest)
     
-    if not fileExists(reqData.indexPath):
+    # Find all available indexes from config
+    let indexPaths = findAllIndexes()
+    if indexPaths.len == 0:
       request.respond(400, body = ErrorResponse(
-        error: "Index file not found: " & reqData.indexPath,
+        error: "No indexes found. Run 'fraggy --index-all' first to create indexes.",
         code: 400
       ).toJson())
       return
     
-    let index = readIndexFromFile(reqData.indexPath)
-    let results = ripgrepSearch(index, reqData.pattern, reqData.caseSensitive, reqData.maxResults)
+    var allResults: seq[RipgrepResult] = @[]
+    
+    # Search across all indexes
+    for indexPath in indexPaths:
+      try:
+        let index = readIndexFromFile(indexPath)
+        let results = ripgrepSearch(index, reqData.pattern, reqData.caseSensitive, reqData.maxResults)
+        allResults.add(results)
+      except Exception as e:
+        # Log warning but continue with other indexes
+        warn &"Could not search index {extractFilename(indexPath)}: {e.msg}"
     
     # Sort results like ripgrep (by filename then line number)
-    let sortedResults = results.sorted do (a, b: RipgrepResult) -> int:
+    allResults.sort do (a, b: RipgrepResult) -> int:
       let fileCompare = cmp(a.file.filename, b.file.filename)
       if fileCompare != 0:
         fileCompare
       else:
         cmp(a.lineNumber, b.lineNumber)
     
-    let matches = sortedResults.map(toRipgrepMatch)
+    # Limit to max results
+    if allResults.len > reqData.maxResults:
+      allResults = allResults[0..<reqData.maxResults]
+    
+    let matches = allResults.map(toRipgrepMatch)
     let response = RipgrepResponse(matches: matches)
     
     request.respond(200, body = response.toJson())
@@ -184,17 +197,36 @@ proc handleEmbeddingSearch*(request: Request) =
   try:
     let reqData = fromJson(request.body, EmbeddingSearchRequest)
     
-    if not fileExists(reqData.indexPath):
+    # Find all available indexes from config
+    let indexPaths = findAllIndexes()
+    if indexPaths.len == 0:
       request.respond(400, body = ErrorResponse(
-        error: "Index file not found: " & reqData.indexPath,
+        error: "No indexes found. Run 'fraggy --index-all' first to create indexes.",
         code: 400
       ).toJson())
       return
     
-    let index = readIndexFromFile(reqData.indexPath)
-    let results = findSimilarFragments(index, reqData.query, reqData.maxResults, reqData.model)
+    var allResults: seq[SimilarityResult] = @[]
     
-    let apiResults = results.map(toSimilarityResultApi)
+    # Search across all indexes
+    for indexPath in indexPaths:
+      try:
+        let index = readIndexFromFile(indexPath)
+        let results = findSimilarFragments(index, reqData.query, reqData.maxResults, reqData.model)
+        allResults.add(results)
+      except Exception as e:
+        # Log warning but continue with other indexes
+        warn &"Could not search index {extractFilename(indexPath)}: {e.msg}"
+    
+    # Sort all results by similarity score (highest first)
+    allResults.sort do (a, b: SimilarityResult) -> int:
+      cmp(b.similarity, a.similarity)
+    
+    # Limit to max results
+    if allResults.len > reqData.maxResults:
+      allResults = allResults[0..<reqData.maxResults]
+    
+    let apiResults = allResults.map(toSimilarityResultApi)
     let response = EmbeddingSearchResponse(
       results: apiResults,
       totalResults: apiResults.len
@@ -215,7 +247,7 @@ proc buildBaseSpec*(): JsonNode =
     "openapi": "3.0.3",
     "info": {
       "title": "Fraggy Search API",
-      "description": "API for searching code using ripgrep and semantic embeddings",
+      "description": "API for searching code using ripgrep and semantic embeddings. Searches across all configured folders and git repositories automatically.",
       "version": "1.0.0"
     },
     "servers": [
@@ -246,14 +278,14 @@ proc buildRipgrepSearchSpec*(): JsonNode =
     "post": {
       "operationId": "searchRipgrep",
       "summary": "Search files using ripgrep",
-      "description": "Perform exact text search using ripgrep with optional case sensitivity",
+      "description": "Perform exact text search using ripgrep with optional case sensitivity across all configured indexes",
       "requestBody": {
         "required": true,
         "content": {
           "application/json": {
             "schema": {
               "type": "object",
-              "required": ["pattern", "indexPath"],
+              "required": ["pattern"],
               "properties": {
                 "pattern": {
                   "type": "string",
@@ -268,10 +300,6 @@ proc buildRipgrepSearchSpec*(): JsonNode =
                   "type": "integer", 
                   "default": 100,
                   "description": "Maximum number of results to return"
-                },
-                "indexPath": {
-                  "type": "string",
-                  "description": "Path to the Fraggy index file"
                 }
               }
             }
@@ -317,14 +345,14 @@ proc buildEmbeddingSearchSpec*(): JsonNode =
     "post": {
       "operationId": "searchEmbedding",
       "summary": "Search using semantic embeddings",
-      "description": "Perform semantic similarity search using AI embeddings",
+      "description": "Perform semantic similarity search using AI embeddings across all configured indexes",
       "requestBody": {
         "required": true,
         "content": {
           "application/json": {
             "schema": {
               "type": "object",
-              "required": ["query", "indexPath"],
+              "required": ["query"],
               "properties": {
                 "query": {
                   "type": "string",
@@ -339,10 +367,6 @@ proc buildEmbeddingSearchSpec*(): JsonNode =
                   "type": "string", 
                   "default": "nomic-embed-text",
                   "description": "The embedding model to use for search"
-                },
-                "indexPath": {
-                  "type": "string",
-                  "description": "Path to the Fraggy index file"
                 }
               }
             }

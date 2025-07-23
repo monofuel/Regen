@@ -49,29 +49,6 @@ proc printHelp*() =
   info "Other:"
   info "  help                        Show this help message"
 
-proc findAllIndexes*(): seq[string] =
-  ## Find all available index files from configured folders and repos.
-  result = @[]
-  
-  let fraggyDir = getHomeDir() / ".fraggy"
-  
-  # Find folder indexes
-  let foldersDir = fraggyDir / "folders"
-  if dirExists(foldersDir):
-    for file in walkDir(foldersDir):
-      if file.kind == pcFile and file.path.endsWith(".flat"):
-        result.add(file.path)
-  
-  # Find repo indexes
-  let reposDir = fraggyDir / "repos"
-  if dirExists(reposDir):
-    for file in walkDir(reposDir):
-      if file.kind == pcFile and file.path.endsWith(".flat"):
-        result.add(file.path)
-  
-  if result.len == 0:
-    warn "No indexes found. Run 'fraggy --index-all' first to create indexes."
-
 proc extractFragmentContent*(file: FraggyFile, fragment: FraggyFragment): seq[string] =
   ## Extract the actual text content from a file fragment.
   result = @[]
