@@ -1,7 +1,7 @@
 ## OpenAPI server for Fraggy search functionality
 
 import
-  std/[strutils, tables, os, json, sequtils, strformat, algorithm],
+  std/[strutils, os, json, sequtils, strformat, algorithm],
   mummy, jsony,
   ./types, ./search, ./index, ./logs
 
@@ -38,6 +38,7 @@ type
     file*: FileInfo
     fragment*: FragmentInfo
     similarity*: float32
+    lines*: seq[LineContent]
 
   FileInfo* = object
     path*: string
@@ -50,9 +51,35 @@ type
     fragmentType*: string
     contentScore*: int
 
+  LineContent* = object
+    lineNumber*: int
+    content*: string
+
   ErrorResponse* = object
     error*: string
     code*: int
+
+# Helper function to extract fragment content (similar to fraggy.nim)
+proc extractFragmentContent*(file: FraggyFile, fragment: FraggyFragment): seq[LineContent] =
+  ## Extract the actual text content from a file fragment with line numbers.
+  result = @[]
+  
+  if not fileExists(file.path):
+    return @[]
+  
+  let content = readFile(file.path)
+  let lines = content.split('\n')
+  
+  # Extract lines from startLine to endLine (1-based indexing)
+  let startIdx = max(0, fragment.startLine - 1)
+  let endIdx = min(lines.len - 1, fragment.endLine - 1)
+  
+  for i in startIdx..endIdx:
+    let actualLineNum = fragment.startLine + (i - startIdx)
+    result.add(LineContent(
+      lineNumber: actualLineNum,
+      content: lines[i]
+    ))
 
 # Helper functions for converting fraggy types to API types
 proc toRipgrepMatch*(ripgrepResult: RipgrepResult): RipgrepMatch =
@@ -80,10 +107,12 @@ proc toFragmentInfo*(fragment: FraggyFragment): FragmentInfo =
   )
 
 proc toSimilarityResultApi*(simResult: SimilarityResult): SimilarityResultApi =
+  let lines = extractFragmentContent(simResult.file, simResult.fragment)
   SimilarityResultApi(
     file: simResult.file.toFileInfo(),
     fragment: simResult.fragment.toFragmentInfo(),
-    similarity: simResult.similarity
+    similarity: simResult.similarity,
+    lines: lines
   )
 
 # API endpoint handlers
@@ -302,7 +331,18 @@ proc buildEmbeddingSearchSpec*(): JsonNode =
                             "contentScore": {"type": "integer"}
                           }
                         },
-                        "similarity": {"type": "number", "format": "float"}
+                        "similarity": {"type": "number", "format": "float"},
+                        "lines": {
+                          "type": "array",
+                          "description": "Actual line content from the fragment",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "lineNumber": {"type": "integer"},
+                              "content": {"type": "string"}
+                            }
+                          }
+                        }
                       }
                     }
                   },
@@ -448,6 +488,7 @@ proc router*(request: Request) =
   of "/":
     # Simple health check / welcome message
     let welcomeMsg = %*{
+      "openapi": "3.0.3",
       "message": "Fraggy Search API",
       "version": "1.0.0",
       "endpoints": [

@@ -219,8 +219,8 @@ proc performEmbeddingSearch*(args: seq[string]) =
 
 proc startApiServer*(args: seq[string]) =
   ## Start the OpenAPI server with optional port and address.
-  var port = 8080
-  var address = "localhost"
+  var port = 8095
+  var address = "0.0.0.0"
   
   # Parse optional port and address
   if args.len > 1:
