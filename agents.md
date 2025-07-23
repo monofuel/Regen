@@ -84,6 +84,7 @@ This approach ensures full stack traces in CI environments and makes debugging s
 - global let and vars should follow consts
 - then functions should follow
 - main function should be at the bottom of the file.
+- comments should be complete sentences that are followed with a period.
 
 ### Nim Imports
 
