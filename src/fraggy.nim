@@ -1,6 +1,8 @@
+## Fraggy CLI - Document fragment and AI indexing tool
+
 import
-  std/[strutils, threadpool, strformat, os, times, osproc, algorithm, math, json],
-  flatty, openai_leap, crunchy
+  std/[strutils, strformat, os],
+  ./types, ./config, ./index, ./search, ./openapi
 
 # flatty is used to serialize/deserialize to flat files
 # top level organization is a git repo, eg monofuel/fragg or monolab/racha
@@ -18,443 +20,221 @@ import
 ## a more sophisticated fragmenter could index on boundaries for the file type. eg: functions in a program, headers in markdown, etc.
 ## an even more sophisticated fragmenter could have both large and small overlapping fragments to help cover a broad range of embeddings.
 
-const
-  SimilarityEmbeddingModel* = "nomic-embed-text"
-  MaxInFlight* = 10
+proc printHelp*() =
+  ## Print help information for fraggy commands.
+  echo "Usage: fraggy <command> [options]"
+  echo ""
+  echo "Configuration Commands:"
+  echo "  --add-folder-index <path>   Add folder to tracking config"
+  echo "  --add-repo-index <path>     Add git repository to tracking config"
+  echo "  --show-config               Show current configuration"
+  echo "  --index-all                 Index all configured folders and repos"
+  echo ""
+  echo "Server Commands:"
+  echo "  --server [port] [address]   Start OpenAPI server (default: 8080, localhost)"
+  echo ""
+  echo "Search Commands:"
+  echo "  --ripgrep-search <pattern> <index-path> [options]"
+  echo "    Options: --case-insensitive --max-results=N"
+  echo "  --embedding-search <query> <index-path> [options]"
+  echo "    Options: --max-results=N --model=MODEL"
+  echo ""
+  echo "Other:"
+  echo "  help                        Show this help message"
 
-# Solution-nine server
-# radeon pro w7500
-var localOllamaApi* = newOpenAiApi(
-  baseUrl = "http://10.11.2.16:11434/v1", 
-  apiKey = "ollama",
-  maxInFlight = MaxInFlight
-)
-
-type
-  FraggyIndexType* = enum
-    fraggy_git_repo
-    fraggy_folder
-
-  FraggyFragment* = object
-    ## A specific chunk of the file
-    startLine*: int
-    endLine*: int
-    embedding*: seq[float32]
-    fragmentType*: string
-    model*: string
-    private*: bool
-    contentScore*: int
-    hash*: string
-
-  FraggyFile* = object
-    ## A specific file that has been indexed.
-    path*: string
-    filename*: string
-    hash*: string
-    creationTime*: float
-    lastModified*: float
-    fragments*: seq[FraggyFragment]
-
-  FraggyGitRepo* = object
-    ## indexing a git repo for a specific commit
-    name*: string
-    latestCommitHash*: string
-    isDirty*: bool # does data match the latest commit?
-    files*: seq[FraggyFile]
-
-  FraggyFolder* = object
-    ## indexing a specific folder on the local disk
-    path*: string
-    files*: seq[FraggyFile]
-
-  FraggyIndex* = object
-    ## a top level wrapper for a fraggy index.
-    version*: string
-    case kind*: FraggyIndexType
-    of fraggy_git_repo:
-      repo*: FraggyGitRepo
-    of fraggy_folder:
-      folder*: FraggyFolder
-
-proc generateEmbedding*(text: string, model: string = SimilarityEmbeddingModel): seq[float32] =
-  ## Generate an embedding for the given text using ollama.
-  let embedding = localOllamaApi.generateEmbeddings(
-    model = model,
-    input = text
-  )
-  result = embedding.data[0].embedding
-
-proc generateEmbeddingsBatch*(texts: seq[string], model: string = SimilarityEmbeddingModel): seq[seq[float32]] =
-  ## Generate embeddings for multiple texts in parallel.
-  var futures: seq[FlowVar[seq[float32]]] = @[]
+proc indexAll*() =
+  ## Index all configured folders and git repositories.
+  let config = loadConfig()
   
-  # Spawn all embedding requests in parallel
-  for text in texts:
-    futures.add(spawn generateEmbedding(text, model))
+  echo "Indexing all configured paths..."
   
-  # Collect results
-  result = @[]
-  for future in futures:
-    result.add(^future)
-
-proc writeIndexToFile*(index: FraggyIndex, filepath: string) =
-  ## Write a FraggyIndex object to a file using flatty serialization.
-  let data = toFlatty(index)
-  writeFile(filepath, data)
-
-proc readIndexFromFile*(filepath: string): FraggyIndex =
-  ## Read a FraggyIndex object from a file using flatty deserialization.
-  let data = readFile(filepath)
-  fromFlatty(data, FraggyIndex)
-
-# Legacy functions for backward compatibility
-proc writeRepoToFile*(repo: FraggyGitRepo, filepath: string) =
-  ## Write a FraggyGitRepo object to a file using flatty serialization.
-  let index = FraggyIndex(version: "0.1.0", kind: fraggy_git_repo, repo: repo)
-  writeIndexToFile(index, filepath)
-
-proc readRepoFromFile*(filepath: string): FraggyGitRepo =
-  ## Read a FraggyGitRepo object from a file using flatty deserialization.
-  let index = readIndexFromFile(filepath)
-  if index.kind == fraggy_git_repo:
-    result = index.repo
-  else:
-    raise newException(ValueError, "File does not contain a git repo index")
-
-proc createFileHash*(content: string): string =
-  ## Create a SHA-256 hash of file content for tracking changes.
-  result = sha256(content).toHex()
-
-proc getGitCommitHash*(repoPath: string): string =
-  ## Get the current git commit hash.
-  try:
-    let (output, exitCode) = execCmdEx(&"cd {repoPath} && git rev-parse HEAD")
-    if exitCode == 0:
-      result = output.strip()
+  # Index folders
+  for folderPath in config.folders:
+    if dirExists(folderPath):
+      echo &"Indexing folder: {folderPath}"
+      let folder = newFraggyFolder(folderPath, config.extensions)
+      let index = FraggyIndex(version: ConfigVersion, kind: fraggy_folder, folder: folder)
+      
+      # Save index to ~/.fraggy/folders/{hash}.flat
+      let folderHash = createFileHash(folderPath)
+      let indexPath = getHomeDir() / ".fraggy" / "folders" / &"{folderHash}.flat"
+      createDir(parentDir(indexPath))
+      writeIndexToFile(index, indexPath)
+      echo &"  Saved index to: {indexPath}"
     else:
-      result = "unknown"
-  except:
-    result = "unknown"
+      echo &"Warning: Folder does not exist: {folderPath}"
+  
+  # Index git repos
+  for repoPath in config.gitRepos:
+    if dirExists(repoPath):
+      echo &"Indexing git repo: {repoPath}"
+      let repo = newFraggyGitRepo(repoPath, config.extensions)
+      let index = FraggyIndex(version: ConfigVersion, kind: fraggy_git_repo, repo: repo)
+      
+      # Save index to ~/.fraggy/repos/{repo_name}_{commit_hash}.flat
+      let repoName = extractFilename(repoPath)
+      let commitHash = getGitCommitHash(repoPath)
+      let indexPath = getHomeDir() / ".fraggy" / "repos" / &"{repoName}_{commitHash}.flat"
+      createDir(parentDir(indexPath))
+      writeIndexToFile(index, indexPath)
+      echo &"  Saved index to: {indexPath}"
+    else:
+      echo &"Warning: Git repo does not exist: {repoPath}"
 
-proc isGitDirty*(repoPath: string): bool =
-  ## Check if the git repository has uncommitted changes.
-  try:
-    let (output, exitCode) = execCmdEx(&"cd {repoPath} && git status --porcelain")
-    result = exitCode != 0 or output.strip().len > 0
-  except:
-    result = true
-
-proc newFraggyFragment*(content: string, filePath: string, startLine: int = 1, endLine: int = -1): FraggyFragment =
-  ## Create a new FraggyFragment from content.
-  let actualEndLine = if endLine == -1: content.split('\n').len else: endLine
-  let embedding = generateEmbedding(content)
+proc performRipgrepSearch*(args: seq[string]) =
+  ## Perform a ripgrep search from command line arguments.
+  if args.len < 3:
+    echo "Error: --ripgrep-search requires pattern and index-path"
+    echo "Usage: fraggy --ripgrep-search <pattern> <index-path> [--case-insensitive] [--max-results=N]"
+    return
   
-  result = FraggyFragment(
-    startLine: startLine,
-    endLine: actualEndLine,
-    embedding: embedding,
-    fragmentType: "file",
-    model: SimilarityEmbeddingModel,
-    private: false,
-    contentScore: if content.len > 1000: 90 else: 70,
-    hash: createFileHash(content)
-  )
-
-proc newFraggyFile*(filePath: string): FraggyFile =
-  ## Create a new FraggyFile by reading and processing the file.
-  let content = readFile(filePath)
-  let fileInfo = getFileInfo(filePath)
-  let fragment = newFraggyFragment(content, filePath)
+  let pattern = args[1]
+  let indexPath = args[2]
+  var caseSensitive = true
+  var maxResults = 100
   
-  result = FraggyFile(
-    path: filePath,
-    filename: extractFilename(filePath),
-    hash: createFileHash(content),
-    creationTime: fileInfo.creationTime.toUnix().float,
-    lastModified: fileInfo.lastWriteTime.toUnix().float,
-    fragments: @[fragment]
-  )
-
-proc findProjectFiles*(rootPath: string, extensions: seq[string]): seq[string] =
-  ## Find all files with specified extensions in the project directory.
-  result = @[]
-  
-  for path in walkDirRec(rootPath, yieldFilter = {pcFile}):
-    let ext = splitFile(path).ext
-    if ext in extensions:
-      result.add(path)
-  
-  # Sort for consistent ordering
-  result.sort()
-
-proc newFraggyGitRepo*(repoPath: string, extensions: seq[string]): FraggyGitRepo =
-  ## Create a new FraggyGitRepo by scanning the repository in parallel.
-  let filePaths = findProjectFiles(repoPath, extensions)
-  
-  # Process all files in parallel
-  var fileFutures: seq[FlowVar[FraggyFile]] = @[]
-  for filePath in filePaths:
-    fileFutures.add(spawn newFraggyFile(filePath))
-  
-  var fraggyFiles: seq[FraggyFile] = @[]
-  for future in fileFutures:
-    fraggyFiles.add(^future)
-  
-  result = FraggyGitRepo(
-    name: extractFilename(repoPath),
-    latestCommitHash: getGitCommitHash(repoPath),
-    isDirty: isGitDirty(repoPath),
-    files: fraggyFiles
-  )
-
-proc newFraggyFolder*(folderPath: string, extensions: seq[string]): FraggyFolder =
-  ## Create a new FraggyFolder by scanning the folder in parallel.
-  let filePaths = findProjectFiles(folderPath, extensions)
-  
-  # Process all files in parallel
-  var fileFutures: seq[FlowVar[FraggyFile]] = @[]
-  for filePath in filePaths:
-    fileFutures.add(spawn newFraggyFile(filePath))
-  
-  var fraggyFiles: seq[FraggyFile] = @[]
-  for future in fileFutures:
-    fraggyFiles.add(^future)
-  
-  result = FraggyFolder(
-    path: folderPath,
-    files: fraggyFiles
-  )
-
-proc newFraggyIndex*(indexType: FraggyIndexType, path: string, extensions: seq[string]): FraggyIndex =
-  ## Create a new FraggyIndex of the specified type using parallel processing.
-  result = FraggyIndex(version: "0.1.0", kind: indexType)
-  
-  case indexType
-  of fraggy_git_repo:
-    result.repo = newFraggyGitRepo(path, extensions)
-  of fraggy_folder:
-    result.folder = newFraggyFolder(path, extensions)
-
-type
-  SimilarityResult* = object
-    ## A result from similarity search
-    fragment*: FraggyFragment
-    file*: FraggyFile
-    similarity*: float32
-
-  RipgrepResult* = object
-    ## A result from ripgrep search
-    file*: FraggyFile
-    lineNumber*: int
-    lineContent*: string
-    matchStart*: int
-    matchEnd*: int
-
-proc cosineSimilarity*(a, b: seq[float32]): float32 =
-  ## Calculate cosine similarity between two embedding vectors.
-  if a.len != b.len:
-    raise newException(ValueError, "Vectors must have the same length")
-  
-  var dotProduct = 0.0'f32
-  var normA = 0.0'f32
-  var normB = 0.0'f32
-  
-  for i in 0..<a.len:
-    dotProduct += a[i] * b[i]
-    normA += a[i] * a[i]
-    normB += b[i] * b[i]
-  
-  let magnitude = sqrt(normA) * sqrt(normB)
-  if magnitude == 0.0'f32:
-    return 0.0'f32
-  
-  result = dotProduct / magnitude
-
-proc findSimilarFragments*(index: FraggyIndex, queryText: string, maxResults: int = 10, model: string = SimilarityEmbeddingModel): seq[SimilarityResult] =
-  ## Find the most similar fragments to the query text.
-  let queryEmbedding = generateEmbedding(queryText, model)
-  var results: seq[SimilarityResult] = @[]
-  
-  # Collect all fragments with their similarity scores
-  case index.kind
-  of fraggy_git_repo:
-    for file in index.repo.files:
-      for fragment in file.fragments:
-        if fragment.model == model:
-          let similarity = cosineSimilarity(queryEmbedding, fragment.embedding)
-          results.add(SimilarityResult(
-            fragment: fragment,
-            file: file,
-            similarity: similarity
-          ))
-  of fraggy_folder:
-    for file in index.folder.files:
-      for fragment in file.fragments:
-        if fragment.model == model:
-          let similarity = cosineSimilarity(queryEmbedding, fragment.embedding)
-          results.add(SimilarityResult(
-            fragment: fragment,
-            file: file,
-            similarity: similarity
-          ))
-  
-  # Sort by similarity (highest first) and return top results
-  results.sort(proc(a, b: SimilarityResult): int =
-    if a.similarity > b.similarity: -1
-    elif a.similarity < b.similarity: 1
-    else: 0
-  )
-  
-  if results.len > maxResults:
-    result = results[0..<maxResults]
-  else:
-    result = results
-
-proc ripgrepSearch*(index: FraggyIndex, pattern: string, caseSensitive: bool = true, maxResults: int = 100): seq[RipgrepResult] =
-  ## Search through all files in the index using actual ripgrep (rg) command.
-  ## Returns matching lines with file info and line numbers.
-  var results: seq[RipgrepResult] = @[]
-  
-  # Get the search directory based on index type
-  let searchPath = case index.kind
-    of fraggy_git_repo:
-      if index.repo.files.len > 0: index.repo.files[0].path.parentDir() else: "."
-    of fraggy_folder:
-      index.folder.path
-  
-  # Build ripgrep command (don't limit per file, we'll limit total results)
-  var cmd = "rg --json --line-number --column"
-  if not caseSensitive:
-    cmd.add(" --ignore-case")
-  
-  # Add the pattern and search path
-  cmd.add(" " & pattern.quoteShell() & " " & searchPath.quoteShell())
-  
-  try:
-    let (output, exitCode) = execCmdEx(cmd)
-    
-    # If rg returns non-zero (no matches or error), return empty results
-    if exitCode != 0:
-      return @[]
-    
-    # Parse JSON output from ripgrep
-    for line in output.strip().split('\n'):
-      if line.strip().len == 0:
-        continue
-        
-      # Stop if we've reached max results
-      if results.len >= maxResults:
-        break
-        
+  # Parse optional arguments
+  for i in 3..<args.len:
+    if args[i] == "--case-insensitive":
+      caseSensitive = false
+    elif args[i].startsWith("--max-results="):
       try:
-        let jsonData = parseJson(line)
-        
-        # Only process "match" type entries
-        if jsonData.hasKey("type") and jsonData["type"].getStr() == "match":
-          let data = jsonData["data"]
-          let filePath = data["path"]["text"].getStr()
-          let lineNum = data["line_number"].getInt()
-          let lineText = data["lines"]["text"].getStr().strip()  # Strip newlines
-          let submatches = data["submatches"]
-          
-          # Find the corresponding FraggyFile
-          var fraggyFile: FraggyFile
-          var fileFound = false
-          
-          case index.kind
-          of fraggy_git_repo:
-            for file in index.repo.files:
-              if file.path == filePath or file.path.endsWith(filePath):
-                fraggyFile = file
-                fileFound = true
-                break
-          of fraggy_folder:
-            for file in index.folder.files:
-              if file.path == filePath or file.path.endsWith(filePath):
-                fraggyFile = file
-                fileFound = true
-                break
-          
-          # If we found the file in our index, create a result for each submatch
-          if fileFound:
-            for submatch in submatches:
-              if results.len >= maxResults:
-                break
-              results.add(RipgrepResult(
-                file: fraggyFile,
-                lineNumber: lineNum,
-                lineContent: lineText,
-                matchStart: submatch["start"].getInt(),
-                matchEnd: submatch["end"].getInt() - 1  # ripgrep uses exclusive end
-              ))
-            
-      except JsonParsingError, KeyError:
-        # Skip malformed JSON lines
-        continue
-        
-  except OSError:
-    # ripgrep command failed, return empty results
-    return @[]
+        maxResults = parseInt(args[i].split("=")[1])
+      except:
+        echo "Warning: Invalid max-results value, using default: 100"
   
-  result = results
-
-proc ripgrepSearchInFile*(filePath: string, pattern: string, caseSensitive: bool = true): seq[tuple[lineNumber: int, lineContent: string, matchStart: int, matchEnd: int]] =
-  ## Search for pattern in a single file using actual ripgrep.
-  var results: seq[tuple[lineNumber: int, lineContent: string, matchStart: int, matchEnd: int]] = @[]
-  
-  if not fileExists(filePath):
-    return @[]
-  
-  # Build ripgrep command for single file
-  var cmd = "rg --json --line-number --column"
-  if not caseSensitive:
-    cmd.add(" --ignore-case")
-  
-  cmd.add(" " & pattern.quoteShell() & " " & filePath.quoteShell())
+  if not fileExists(indexPath):
+    echo &"Error: Index file not found: {indexPath}"
+    return
   
   try:
-    let (output, exitCode) = execCmdEx(cmd)
+    echo &"Searching for pattern: '{pattern}' in {indexPath}"
+    echo &"Case sensitive: {caseSensitive}, Max results: {maxResults}"
+    echo "---"
     
-    # If rg returns non-zero (no matches or error), return empty results
-    if exitCode != 0:
-      return @[]
+    let index = readIndexFromFile(indexPath)
+    let results = ripgrepSearch(index, pattern, caseSensitive, maxResults)
     
-    # Parse JSON output from ripgrep
-    for line in output.strip().split('\n'):
-      if line.strip().len == 0:
-        continue
-        
-      try:
-        let jsonData = parseJson(line)
-        
-        # Only process "match" type entries
-        if jsonData.hasKey("type") and jsonData["type"].getStr() == "match":
-          let data = jsonData["data"]
-          let lineNum = data["line_number"].getInt()
-          let lineText = data["lines"]["text"].getStr().strip()  # Strip newlines
-          let submatches = data["submatches"]
-          
-          # Add a result for each submatch
-          for submatch in submatches:
-            results.add((
-              lineNumber: lineNum,
-              lineContent: lineText,
-              matchStart: submatch["start"].getInt(),
-              matchEnd: submatch["end"].getInt() - 1  # ripgrep uses exclusive end
-            ))
-            
-      except JsonParsingError, KeyError:
-        # Skip malformed JSON lines
-        continue
-        
-  except OSError:
-    # ripgrep command failed
-    return @[]
+    if results.len == 0:
+      echo "No matches found."
+      return
+    
+    echo &"Found {results.len} results:"
+    echo ""
+    
+    for i, result in results:
+      echo &"[{i+1}] {result.file.filename}:{result.lineNumber}"
+      echo &"    {result.lineContent}"
+      echo &"    Match at columns {result.matchStart}-{result.matchEnd}"
+      echo ""
+      
+  except Exception as e:
+    echo &"Error performing search: {e.msg}"
+
+proc performEmbeddingSearch*(args: seq[string]) =
+  ## Perform an embedding search from command line arguments.
+  if args.len < 3:
+    echo "Error: --embedding-search requires query and index-path"
+    echo "Usage: fraggy --embedding-search <query> <index-path> [--max-results=N] [--model=MODEL]"
+    return
   
-  result = results
+  let query = args[1]
+  let indexPath = args[2]
+  var maxResults = 10
+  var model = SimilarityEmbeddingModel
+  
+  # Parse optional arguments
+  for i in 3..<args.len:
+    if args[i].startsWith("--max-results="):
+      try:
+        maxResults = parseInt(args[i].split("=")[1])
+      except:
+        echo "Warning: Invalid max-results value, using default: 10"
+    elif args[i].startsWith("--model="):
+      model = args[i].split("=")[1]
+  
+  if not fileExists(indexPath):
+    echo &"Error: Index file not found: {indexPath}"
+    return
+  
+  try:
+    echo &"Searching for: '{query}' in {indexPath}"
+    echo &"Model: {model}, Max results: {maxResults}"
+    echo "---"
+    
+    let index = readIndexFromFile(indexPath)
+    let results = findSimilarFragments(index, query, maxResults, model)
+    
+    if results.len == 0:
+      echo "No similar fragments found."
+      return
+    
+    echo &"Found {results.len} similar fragments:"
+    echo ""
+    
+    for i, result in results:
+      echo &"[{i+1}] {result.file.filename} (similarity: {result.similarity:.3f})"
+      echo &"    Lines {result.fragment.startLine}-{result.fragment.endLine}"
+      echo &"    Type: {result.fragment.fragmentType}"
+      echo &"    Score: {result.fragment.contentScore}"
+      echo ""
+      
+  except Exception as e:
+    echo &"Error performing search: {e.msg}"
+
+proc startApiServer*(args: seq[string]) =
+  ## Start the OpenAPI server with optional port and address.
+  var port = 8080
+  var address = "localhost"
+  
+  # Parse optional port and address
+  if args.len > 1:
+    try:
+      port = parseInt(args[1])
+    except:
+      echo "Warning: Invalid port number, using default: 8080"
+  
+  if args.len > 2:
+    address = args[2]
+  
+  echo &"Starting Fraggy OpenAPI server on {address}:{port}"
+  startServer(port, address)
 
 proc main() =
-  echo "Hello, World!"
+  let args = commandLineParams()
+  
+  if args.len == 0 or (args.len > 0 and args[0] == "help"):
+    printHelp()
+    return
+  
+  let cmd = args[0]
+  case cmd:
+  of "--add-folder-index":
+    if args.len < 2:
+      echo "Error: --add-folder-index requires a path argument"
+      printHelp()
+      return
+    addFolderToConfig(args[1])
+  of "--add-repo-index":
+    if args.len < 2:
+      echo "Error: --add-repo-index requires a path argument"
+      printHelp()
+      return
+    addGitRepoToConfig(args[1])
+  of "--show-config":
+    showConfig()
+  of "--index-all":
+    indexAll()
+  of "--server":
+    startApiServer(args)
+  of "--ripgrep-search":
+    performRipgrepSearch(args)
+  of "--embedding-search":
+    performEmbeddingSearch(args)
+  else:
+    echo &"Unknown command: {cmd}"
+    echo ""
+    printHelp()
 
 when isMainModule:
   main()

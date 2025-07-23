@@ -1,7 +1,10 @@
+## OpenAPI server for Fraggy search functionality
+
 import
   std/[strutils, tables, os, json, sequtils],
-  fraggy, mummy, jsony
-  
+  mummy, jsony,
+  ./types, ./search, ./index
+
 # Request/Response types for API endpoints
 type
   RipgrepRequest* = object
@@ -50,89 +53,6 @@ type
   ErrorResponse* = object
     error*: string
     code*: int
-
-# OpenAPI spec building functions
-proc buildCompleteOpenApiSpec*(): string =
-  ## Assemble the complete OpenAPI specification as JSON string
-  let spec = %*{
-    "openapi": "3.0.3",
-    "info": {
-      "title": "Fraggy Search API",
-      "description": "API for searching code using ripgrep and semantic embeddings",
-      "version": "1.0.0"
-    },
-    "servers": [
-      {
-        "url": "http://localhost:8080",
-        "description": "Local development server"
-      }
-    ],
-    "paths": {
-      "/search/ripgrep": {
-        "post": {
-          "summary": "Search files using ripgrep",
-          "requestBody": {
-            "required": true,
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": ["pattern", "indexPath"],
-                  "properties": {
-                    "pattern": {"type": "string"},
-                    "caseSensitive": {"type": "boolean", "default": true},
-                    "maxResults": {"type": "integer", "default": 100},
-                    "indexPath": {"type": "string"}
-                  }
-                }
-              }
-            }
-          },
-          "responses": {
-            "200": {"description": "Search results"},
-            "400": {"description": "Bad request"},
-            "500": {"description": "Internal server error"}
-          }
-        }
-      },
-      "/search/embedding": {
-        "post": {
-          "summary": "Search using semantic embeddings",
-          "requestBody": {
-            "required": true,
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": ["query", "indexPath"],
-                  "properties": {
-                    "query": {"type": "string"},
-                    "maxResults": {"type": "integer", "default": 10},
-                    "model": {"type": "string", "default": "nomic-embed-text"},
-                    "indexPath": {"type": "string"}
-                  }
-                }
-              }
-            }
-          },
-          "responses": {
-            "200": {"description": "Search results"},
-            "400": {"description": "Bad request"},
-            "500": {"description": "Internal server error"}
-          }
-        }
-      },
-      "/openapi.json": {
-        "get": {
-          "summary": "Get OpenAPI specification",
-          "responses": {
-            "200": {"description": "OpenAPI specification"}
-          }
-        }
-      }
-    }
-  }
-  result = $spec
 
 # Helper functions for converting fraggy types to API types
 proc toFileInfo*(fraggyFile: FraggyFile): FileInfo =
@@ -223,12 +143,261 @@ proc handleEmbeddingSearch*(request: Request) =
       code: 500
     ).toJson())
 
+# OpenAPI spec building functions
+proc buildBaseSpec*(): JsonNode =
+  ## Build the base OpenAPI specification info
+  result = %*{
+    "openapi": "3.0.3",
+    "info": {
+      "title": "Fraggy Search API",
+      "description": "API for searching code using ripgrep and semantic embeddings",
+      "version": "1.0.0"
+    },
+    "servers": [
+      {
+        "url": "http://localhost:8080",
+        "description": "Local development server"
+      }
+    ]
+  }
+
+proc buildRipgrepSearchSpec*(): JsonNode =
+  ## Build the OpenAPI spec for the ripgrep search endpoint
+  result = %*{
+    "post": {
+      "summary": "Search files using ripgrep",
+      "description": "Perform exact text search using ripgrep with optional case sensitivity",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["pattern", "indexPath"],
+              "properties": {
+                "pattern": {
+                  "type": "string",
+                  "description": "The text pattern to search for"
+                },
+                "caseSensitive": {
+                  "type": "boolean", 
+                  "default": true,
+                  "description": "Whether the search should be case sensitive"
+                },
+                "maxResults": {
+                  "type": "integer", 
+                  "default": 100,
+                  "description": "Maximum number of results to return"
+                },
+                "indexPath": {
+                  "type": "string",
+                  "description": "Path to the Fraggy index file"
+                }
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Search results",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "results": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "file": {
+                          "type": "object",
+                          "properties": {
+                            "path": {"type": "string"},
+                            "filename": {"type": "string"},
+                            "hash": {"type": "string"}
+                          }
+                        },
+                        "lineNumber": {"type": "integer"},
+                        "lineContent": {"type": "string"},
+                        "matchStart": {"type": "integer"},
+                        "matchEnd": {"type": "integer"}
+                      }
+                    }
+                  },
+                  "totalResults": {"type": "integer"}
+                }
+              }
+            }
+          }
+        },
+        "400": {"description": "Bad request - invalid parameters"},
+        "500": {"description": "Internal server error"}
+      }
+    }
+  }
+
+proc buildEmbeddingSearchSpec*(): JsonNode =
+  ## Build the OpenAPI spec for the embedding search endpoint
+  result = %*{
+    "post": {
+      "summary": "Search using semantic embeddings",
+      "description": "Perform semantic similarity search using AI embeddings",
+      "requestBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["query", "indexPath"],
+              "properties": {
+                "query": {
+                  "type": "string",
+                  "description": "The semantic query to search for"
+                },
+                "maxResults": {
+                  "type": "integer", 
+                  "default": 10,
+                  "description": "Maximum number of results to return"
+                },
+                "model": {
+                  "type": "string", 
+                  "default": "nomic-embed-text",
+                  "description": "The embedding model to use for search"
+                },
+                "indexPath": {
+                  "type": "string",
+                  "description": "Path to the Fraggy index file"
+                }
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "Search results",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "results": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "file": {
+                          "type": "object",
+                          "properties": {
+                            "path": {"type": "string"},
+                            "filename": {"type": "string"},
+                            "hash": {"type": "string"}
+                          }
+                        },
+                        "fragment": {
+                          "type": "object",
+                          "properties": {
+                            "startLine": {"type": "integer"},
+                            "endLine": {"type": "integer"},
+                            "fragmentType": {"type": "string"},
+                            "contentScore": {"type": "integer"}
+                          }
+                        },
+                        "similarity": {"type": "number", "format": "float"}
+                      }
+                    }
+                  },
+                  "totalResults": {"type": "integer"}
+                }
+              }
+            }
+          }
+        },
+        "400": {"description": "Bad request - invalid parameters"},
+        "500": {"description": "Internal server error"}
+      }
+    }
+  }
+
+proc buildOpenApiSpecEndpointSpec*(): JsonNode =
+  ## Build the OpenAPI spec for the spec endpoint itself
+  result = %*{
+    "get": {
+      "summary": "Get OpenAPI specification",
+      "description": "Returns the complete OpenAPI specification for this API",
+      "responses": {
+        "200": {
+          "description": "OpenAPI specification",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "OpenAPI 3.0.3 specification"
+              }
+            }
+          }
+        },
+        "500": {"description": "Internal server error"}
+      }
+    }
+  }
+
+proc buildHealthCheckSpec*(): JsonNode =
+  ## Build the OpenAPI spec for the health check endpoint
+  result = %*{
+    "get": {
+      "summary": "Health check and API information",
+      "description": "Returns basic API information and available endpoints",
+      "responses": {
+        "200": {
+          "description": "API information",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": {"type": "string"},
+                  "version": {"type": "string"},
+                  "endpoints": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "path": {"type": "string"},
+                        "method": {"type": "string"}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+proc buildCompleteOpenApiSpec*(): JsonNode =
+  ## Assemble the complete OpenAPI specification by combining all endpoint specs
+  result = buildBaseSpec()
+  
+  # Add the paths section by combining all endpoint specs
+  result["paths"] = %*{
+    "/search/ripgrep": buildRipgrepSearchSpec(),
+    "/search/embedding": buildEmbeddingSearchSpec(),
+    "/openapi.json": buildOpenApiSpecEndpointSpec(),
+    "/": buildHealthCheckSpec()
+  }
+
 proc handleOpenApiSpec*(request: Request) =
+  ## Handle requests for the OpenAPI specification
   try:
     let spec = buildCompleteOpenApiSpec()
     var headers: HttpHeaders
     headers["Content-Type"] = "application/json"
-    request.respond(200, headers, body = spec)
+    request.respond(200, headers, body = $spec)
   except Exception as e:
     request.respond(500, body = ErrorResponse(
       error: "Failed to generate spec: " & e.msg,
@@ -304,7 +473,4 @@ proc startServer*(port: int = 8080, address: string = "localhost") =
   echo "OpenAPI spec available at: http://", address, ":", port, "/openapi.json"
   
   let server = newServer(router)
-  server.serve(Port(port), address)
-
-when isMainModule:
-  startServer()
+  server.serve(Port(port), address) 
