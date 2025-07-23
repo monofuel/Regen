@@ -71,6 +71,23 @@ proc findAllIndexes*(): seq[string] =
   if result.len == 0:
     warn "No indexes found. Run 'fraggy --index-all' first to create indexes."
 
+proc extractFragmentContent*(file: FraggyFile, fragment: FraggyFragment): seq[string] =
+  ## Extract the actual text content from a file fragment.
+  result = @[]
+  
+  if not fileExists(file.path):
+    return @[]
+  
+  let content = readFile(file.path)
+  let lines = content.split('\n')
+  
+  # Extract lines from startLine to endLine (1-based indexing)
+  let startIdx = max(0, fragment.startLine - 1)
+  let endIdx = min(lines.len - 1, fragment.endLine - 1)
+  
+  for i in startIdx..endIdx:
+    result.add(lines[i])
+
 proc performRipgrepSearch*(args: seq[string]) =
   ## Perform a ripgrep search from command line arguments.
   if args.len < 2:
@@ -185,12 +202,20 @@ proc performEmbeddingSearch*(args: seq[string]) =
   info &"Found {allResults.len} similar fragments:"
   info ""
   
+  # Group by filename and output in ripgrep-like format
+  var currentFile = ""
   for i, result in allResults:
-    info &"[{i+1}] {result.file.filename} (similarity: {result.similarity:.3f})"
-    info &"    Lines {result.fragment.startLine}-{result.fragment.endLine}"
-    info &"    Type: {result.fragment.fragmentType}"
-    info &"    Score: {result.fragment.contentScore}"
-    info ""
+    if result.file.filename != currentFile:
+      if currentFile != "":
+        echo ""  # Blank line between files
+      echo &"{result.file.filename} (similarity: {result.similarity:.3f})"
+      currentFile = result.file.filename
+    
+    # Extract and display the actual fragment content
+    let fragmentLines = extractFragmentContent(result.file, result.fragment)
+    for lineIdx, lineContent in fragmentLines:
+      let actualLineNum = result.fragment.startLine + lineIdx
+      echo &"{actualLineNum}:{lineContent}"
 
 proc startApiServer*(args: seq[string]) =
   ## Start the OpenAPI server with optional port and address.
