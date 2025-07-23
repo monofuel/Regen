@@ -1,0 +1,6 @@
+This is a test file.
+It contains multiple lines.
+Some lines have UPPERCASE words.
+Others have lowercase words.
+Pattern matching is important.
+Regular expressions are powerful. 

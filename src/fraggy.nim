@@ -1,5 +1,5 @@
 import
-  std/[strutils, threadpool, strformat, os, times, osproc, algorithm, math],
+  std/[strutils, threadpool, strformat, os, times, osproc, algorithm, math, re],
   flatty, openai_leap, crunchy
 
 # flatty is used to serialize/deserialize to flat files
@@ -242,6 +242,14 @@ type
     file*: FraggyFile
     similarity*: float32
 
+  RipgrepResult* = object
+    ## A result from ripgrep search
+    file*: FraggyFile
+    lineNumber*: int
+    lineContent*: string
+    matchStart*: int
+    matchEnd*: int
+
 proc cosineSimilarity*(a, b: seq[float32]): float32 =
   ## Calculate cosine similarity between two embedding vectors.
   if a.len != b.len:
@@ -301,6 +309,118 @@ proc findSimilarFragments*(index: FraggyIndex, queryText: string, maxResults: in
     result = results[0..<maxResults]
   else:
     result = results
+
+proc ripgrepSearch*(index: FraggyIndex, pattern: string, caseSensitive: bool = true, maxResults: int = 100): seq[RipgrepResult] =
+  ## Search through all files in the index using regex pattern (like ripgrep).
+  ## Returns matching lines with file info and line numbers.
+  var results: seq[RipgrepResult] = @[]
+  var regex: Regex
+  
+  try:
+    if caseSensitive:
+      regex = re(pattern)
+    else:
+      regex = re("(?i)" & pattern)
+  except RegexError:
+    # Invalid regex pattern, return empty results
+    return @[]
+  
+  case index.kind
+  of fraggy_git_repo:
+    for file in index.repo.files:
+      if results.len >= maxResults:
+        break
+      
+      # Read the actual file content
+      if not fileExists(file.path):
+        continue
+      
+      try:
+        let content = readFile(file.path)
+        let lines = content.split('\n')
+        
+        for i, line in lines:
+          if results.len >= maxResults:
+            break
+          
+          let bounds = line.findBounds(regex)
+          if bounds.first != -1:
+            results.add(RipgrepResult(
+              file: file,
+              lineNumber: i + 1, # 1-indexed line numbers
+              lineContent: line,
+              matchStart: bounds.first,
+              matchEnd: bounds.last
+            ))
+      except IOError, OSError:
+        # Skip files that can't be read
+        continue
+        
+  of fraggy_folder:
+    for file in index.folder.files:
+      if results.len >= maxResults:
+        break
+      
+      # Read the actual file content
+      if not fileExists(file.path):
+        continue
+      
+      try:
+        let content = readFile(file.path)
+        let lines = content.split('\n')
+        
+        for i, line in lines:
+          if results.len >= maxResults:
+            break
+          
+          let bounds = line.findBounds(regex)
+          if bounds.first != -1:
+            results.add(RipgrepResult(
+              file: file,
+              lineNumber: i + 1, # 1-indexed line numbers
+              lineContent: line,
+              matchStart: bounds.first,
+              matchEnd: bounds.last
+            ))
+      except IOError, OSError:
+        # Skip files that can't be read
+        continue
+  
+  result = results
+
+proc ripgrepSearchInFile*(filePath: string, pattern: string, caseSensitive: bool = true): seq[tuple[lineNumber: int, lineContent: string, matchStart: int, matchEnd: int]] =
+  ## Search for pattern in a single file (helper function).
+  var results: seq[tuple[lineNumber: int, lineContent: string, matchStart: int, matchEnd: int]] = @[]
+  var regex: Regex
+  
+  try:
+    if caseSensitive:
+      regex = re(pattern)
+    else:
+      regex = re("(?i)" & pattern)
+  except RegexError:
+    return @[]
+  
+  if not fileExists(filePath):
+    return @[]
+  
+  try:
+    let content = readFile(filePath)
+    let lines = content.split('\n')
+    
+    for i, line in lines:
+      let bounds = line.findBounds(regex)
+      if bounds.first != -1:
+        results.add((
+          lineNumber: i + 1,
+          lineContent: line,
+          matchStart: bounds.first,
+          matchEnd: bounds.last
+        ))
+  except IOError, OSError:
+    return @[]
+  
+  result = results
 
 proc main() =
   echo "Hello, World!"
