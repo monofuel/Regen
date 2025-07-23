@@ -31,6 +31,7 @@ proc printHelp*() =
   info "  --add-folder-index <path>   Add folder to tracking config"
   info "  --add-repo-index <path>     Add git repository to tracking config"
   info "  --show-config               Show current configuration"
+  info "  --show-api-key              Show API key for Bearer authentication"
   info "  --index-all                 Index all configured folders and repos"
   info ""
   info "Server Commands:"
@@ -258,6 +259,9 @@ proc main() =
     addGitRepoToConfig(args[1])
   of "--show-config":
     showConfig()
+  of "--show-api-key":
+    let config = loadConfig()
+    echo config.apiKey
   of "--index-all":
     indexAll()
   of "--server":

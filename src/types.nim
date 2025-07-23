@@ -12,6 +12,7 @@ type
     gitRepos*: seq[string] ## List of git repository paths to index
     extensions*: seq[string] ## File extensions to include in indexing
     embeddingModel*: string ## Model to use for embeddings
+    apiKey*: string ## Bearer token for API authentication
 
   FraggyFragment* = object
     ## A specific chunk of the file

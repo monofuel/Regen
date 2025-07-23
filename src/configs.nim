@@ -1,12 +1,20 @@
 ## Configuration management for Fraggy
 
 import
-  std/[strutils, strformat, os],
+  std/[strutils, strformat, os, random],
   jsony,
   ./types, ./search, ./logs
 
 const
   ConfigVersion* = "0.1.0"
+
+proc generateApiKey*(): string =
+  ## Generate a random API key for Bearer authentication.
+  randomize()
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+  result = ""
+  for i in 0..63:  # 64 character key
+    result.add(chars[rand(chars.len - 1)])
 
 proc getConfigPath*(): string =
   ## Get the path to the fraggy config file.
@@ -26,13 +34,19 @@ proc loadConfig*(): FraggyConfig =
       folders: @[],
       gitRepos: @[],
       extensions: @[".nim", ".md", ".txt", ".py", ".js", ".ts", ".rs", ".go"],
-      embeddingModel: SimilarityEmbeddingModel
+      embeddingModel: SimilarityEmbeddingModel,
+      apiKey: generateApiKey()
     )
     return
   
   try:
     let configData = readFile(configPath)
     result = fromJson(configData, FraggyConfig)
+    
+    # Handle backward compatibility - generate API key if missing
+    if result.apiKey.len == 0:
+      result.apiKey = generateApiKey()
+      info "Generated API key for existing config"
   except:
     error &"Error loading config from {configPath}: {getCurrentExceptionMsg()}"
     # Return default config on error
@@ -41,7 +55,8 @@ proc loadConfig*(): FraggyConfig =
       folders: @[],
       gitRepos: @[],
       extensions: @[".nim", ".md", ".txt", ".py", ".js", ".ts", ".rs", ".go"],
-      embeddingModel: SimilarityEmbeddingModel
+      embeddingModel: SimilarityEmbeddingModel,
+      apiKey: generateApiKey()
     )
 
 proc saveConfig*(config: FraggyConfig) =
@@ -98,6 +113,7 @@ proc showConfig*() =
   info "Fraggy Configuration:"
   info &"  Version: {config.version}"
   info &"  Embedding Model: {config.embeddingModel}"
+  info &"  API Key: {config.apiKey[0..7]}...{config.apiKey[^8..^1]} (Bearer token for API)"
   info &"  Extensions: {config.extensions.join(\", \")}"
   info &"  Folders ({config.folders.len}):"
   for folder in config.folders:

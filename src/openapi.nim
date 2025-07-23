@@ -3,7 +3,7 @@
 import
   std/[strutils, os, json, sequtils, strformat, algorithm],
   mummy, jsony,
-  ./types, ./search, ./index, ./logs
+  ./types, ./search, ./index, ./logs, ./configs
 
 # Request/Response types for API endpoints
 type
@@ -115,8 +115,31 @@ proc toSimilarityResultApi*(simResult: SimilarityResult): SimilarityResultApi =
     lines: lines
   )
 
+proc isAuthenticated*(request: Request): bool =
+  ## Check if the request has valid Bearer authentication.
+  let config = loadConfig()
+  
+  # Check if Authorization header exists
+  if "authorization" notin request.headers:
+    return false
+    
+  let authHeader = request.headers["authorization"]
+  if not authHeader.startsWith("Bearer "):
+    return false
+    
+  let token = authHeader[7..^1]  # Remove "Bearer " prefix
+  return token == config.apiKey
+
 # API endpoint handlers
 proc handleRipgrepSearch*(request: Request) =
+  # Check authentication
+  if not isAuthenticated(request):
+    request.respond(401, body = ErrorResponse(
+      error: "Unauthorized - Bearer token required",
+      code: 401
+    ).toJson())
+    return
+    
   try:
     let reqData = fromJson(request.body, RipgrepRequest)
     
@@ -150,6 +173,14 @@ proc handleRipgrepSearch*(request: Request) =
     ).toJson())
 
 proc handleEmbeddingSearch*(request: Request) =
+  # Check authentication
+  if not isAuthenticated(request):
+    request.respond(401, body = ErrorResponse(
+      error: "Unauthorized - Bearer token required",
+      code: 401
+    ).toJson())
+    return
+    
   try:
     let reqData = fromJson(request.body, EmbeddingSearchRequest)
     
@@ -192,6 +223,20 @@ proc buildBaseSpec*(): JsonNode =
         "url": "http://localhost:8080",
         "description": "Local development server"
       }
+    ],
+    "components": {
+      "securitySchemes": {
+        "bearerAuth": {
+          "type": "http",
+          "scheme": "bearer",
+          "bearerFormat": "API Key"
+        }
+      }
+    },
+    "security": [
+      {
+        "bearerAuth": []
+      }
     ]
   }
 
@@ -199,6 +244,7 @@ proc buildRipgrepSearchSpec*(): JsonNode =
   ## Build the OpenAPI spec for the ripgrep search endpoint
   result = %*{
     "post": {
+      "operationId": "searchRipgrep",
       "summary": "Search files using ripgrep",
       "description": "Perform exact text search using ripgrep with optional case sensitivity",
       "requestBody": {
@@ -259,6 +305,7 @@ proc buildRipgrepSearchSpec*(): JsonNode =
           }
         },
         "400": {"description": "Bad request - invalid parameters"},
+        "401": {"description": "Unauthorized - Bearer token required"},
         "500": {"description": "Internal server error"}
       }
     }
@@ -268,6 +315,7 @@ proc buildEmbeddingSearchSpec*(): JsonNode =
   ## Build the OpenAPI spec for the embedding search endpoint
   result = %*{
     "post": {
+      "operationId": "searchEmbedding",
       "summary": "Search using semantic embeddings",
       "description": "Perform semantic similarity search using AI embeddings",
       "requestBody": {
@@ -353,6 +401,7 @@ proc buildEmbeddingSearchSpec*(): JsonNode =
           }
         },
         "400": {"description": "Bad request - invalid parameters"},
+        "401": {"description": "Unauthorized - Bearer token required"},
         "500": {"description": "Internal server error"}
       }
     }
@@ -362,6 +411,7 @@ proc buildOpenApiSpecEndpointSpec*(): JsonNode =
   ## Build the OpenAPI spec for the spec endpoint itself
   result = %*{
     "get": {
+      "operationId": "getOpenApiSpec",
       "summary": "Get OpenAPI specification",
       "description": "Returns the complete OpenAPI specification for this API",
       "responses": {
@@ -385,6 +435,7 @@ proc buildHealthCheckSpec*(): JsonNode =
   ## Build the OpenAPI spec for the health check endpoint
   result = %*{
     "get": {
+      "operationId": "healthCheck",
       "summary": "Health check and API information",
       "description": "Returns basic API information and available endpoints",
       "responses": {
@@ -449,7 +500,7 @@ proc router*(request: Request) =
   var headers: HttpHeaders
   headers["Access-Control-Allow-Origin"] = "*"
   headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-  headers["Access-Control-Allow-Headers"] = "Content-Type"
+  headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
   headers["Content-Type"] = "application/json"
   
   # Handle preflight requests
@@ -457,6 +508,7 @@ proc router*(request: Request) =
     request.respond(200, headers)
     return
   
+  info &"Request: {request.httpMethod} {path}"
   case path:
   of "/search/ripgrep":
     if request.httpMethod == "POST":
@@ -488,7 +540,6 @@ proc router*(request: Request) =
   of "/":
     # Simple health check / welcome message
     let welcomeMsg = %*{
-      "openapi": "3.0.3",
       "message": "Fraggy Search API",
       "version": "1.0.0",
       "endpoints": [
