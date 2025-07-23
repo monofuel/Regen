@@ -11,9 +11,12 @@
 - src/openapi.nim is for the swagger openapi API
 - src/search.nim is for traditional keyword / regex search
 - src/types.nim contains all types (to avoid circular dependencies)
+- src/logs.nim is for logging
 
 - types.nim and configs.nim should not import other files, to avoid circular dependencies.
 - any 'magic number' constants should live in configs.nim
+- DO NOT use `echo` for debugging, use our logging functions to make it easier to selectively mute debug logs.
+- only use `echo` for intentional application output (eg: ripgrep output)
 
 ## Nim best practices
 

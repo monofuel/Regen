@@ -3,7 +3,7 @@
 import
   std/[strutils, threadpool, strformat, os, times, osproc, algorithm, sequtils],
   flatty, crunchy,
-  ./types, ./search, ./configs
+  ./types, ./search, ./configs, ./logs
 
 proc writeIndexToFile*(index: FraggyIndex, filepath: string) =
   ## Write a FraggyIndex object to a file using flatty serialization.
@@ -167,7 +167,7 @@ proc updateFraggyIndex*(existingIndex: FraggyIndex, currentPath: string, extensi
   ## Update an existing index with only the files that have changed.
   result = existingIndex
   
-  echo "  Checking for changes..."
+  info "Checking for changes..."
   let currentFiles = findProjectFiles(currentPath, extensions)
   var filesToUpdate: seq[string] = @[]
   var filesToRemove: seq[int] = @[]
@@ -179,18 +179,18 @@ proc updateFraggyIndex*(existingIndex: FraggyIndex, currentPath: string, extensi
       if existingFile.path notin currentFiles:
         # File was deleted
         filesToRemove.add(i)
-        echo &"    - Removed: {existingFile.filename}"
+        info &"    - Removed: {existingFile.filename}"
       elif needsReindexing(existingFile, existingFile.path):
         # File was modified
         filesToUpdate.add(existingFile.path)
-        echo &"    - Modified: {existingFile.filename}"
+        info &"    - Modified: {existingFile.filename}"
     
     # Check for new files
     for currentFile in currentFiles:
       let existsInIndex = result.folder.files.anyIt(it.path == currentFile)
       if not existsInIndex:
         filesToUpdate.add(currentFile)
-        echo &"    - New: {extractFilename(currentFile)}"
+        info &"    - New: {extractFilename(currentFile)}"
     
     # Remove deleted files (in reverse order to maintain indices)
     for i in countdown(filesToRemove.len - 1, 0):
@@ -198,7 +198,7 @@ proc updateFraggyIndex*(existingIndex: FraggyIndex, currentPath: string, extensi
     
     # Update/add changed files
     if filesToUpdate.len > 0:
-      echo &"  Reindexing {filesToUpdate.len} files..."
+      info &"Reindexing {filesToUpdate.len} files..."
       
       # Process files in parallel if there are many
       if filesToUpdate.len > 3:
@@ -242,18 +242,18 @@ proc updateFraggyIndex*(existingIndex: FraggyIndex, currentPath: string, extensi
       if existingFile.path notin currentFiles:
         # File was deleted
         filesToRemove.add(i)
-        echo &"    - Removed: {existingFile.filename}"
+        info &"    - Removed: {existingFile.filename}"
       elif needsReindexing(existingFile, existingFile.path):
         # File was modified
         filesToUpdate.add(existingFile.path)
-        echo &"    - Modified: {existingFile.filename}"
+        info &"    - Modified: {existingFile.filename}"
     
     # Check for new files
     for currentFile in currentFiles:
       let existsInIndex = result.repo.files.anyIt(it.path == currentFile)
       if not existsInIndex:
         filesToUpdate.add(currentFile)
-        echo &"    - New: {extractFilename(currentFile)}"
+        info &"    - New: {extractFilename(currentFile)}"
     
     # Remove deleted files (in reverse order to maintain indices)
     for i in countdown(filesToRemove.len - 1, 0):
@@ -261,7 +261,7 @@ proc updateFraggyIndex*(existingIndex: FraggyIndex, currentPath: string, extensi
     
     # Update/add changed files
     if filesToUpdate.len > 0:
-      echo &"  Reindexing {filesToUpdate.len} files..."
+      info &"Reindexing {filesToUpdate.len} files..."
       
       # Process files in parallel if there are many
       if filesToUpdate.len > 3:
@@ -296,21 +296,21 @@ proc updateFraggyIndex*(existingIndex: FraggyIndex, currentPath: string, extensi
             result.repo.files.add(newFile)
   
   if filesToUpdate.len == 0 and filesToRemove.len == 0:
-    echo "    No changes detected"
+    info "No changes detected"
 
 proc indexAll*() =
   ## Index all configured folders and git repositories with intelligent incremental updates.
   let config = loadConfig()
   
-  echo "Indexing all configured paths..."
+  info "Indexing all configured paths..."
   
   # Index folders
   for folderPath in config.folders:
     if not dirExists(folderPath):
-      echo &"Warning: Folder does not exist: {folderPath}"
+      warn &"Folder does not exist: {folderPath}"
       continue
     
-    echo &"Indexing folder: {folderPath}"
+    info &"Indexing folder: {folderPath}"
     
     # Generate simpler filename without hash
     let folderName = extractFilename(folderPath)
@@ -327,34 +327,34 @@ proc indexAll*() =
         if existingIndex.kind == fraggy_folder:
           index = updateFraggyIndex(existingIndex, folderPath, config.extensions)
         else:
-          echo "  Warning: Existing index is wrong type, rebuilding..."
+          warn "Existing index is wrong type, rebuilding..."
           let folder = newFraggyFolder(folderPath, config.extensions)
           index = FraggyIndex(version: ConfigVersion, kind: fraggy_folder, folder: folder)
       except:
-        echo "  Warning: Could not load existing index, rebuilding..."
+        warn "Could not load existing index, rebuilding..."
         let folder = newFraggyFolder(folderPath, config.extensions)
         index = FraggyIndex(version: ConfigVersion, kind: fraggy_folder, folder: folder)
     else:
       # Create new index
-      echo "  Creating new index..."
+      info "Creating new index..."
       let folder = newFraggyFolder(folderPath, config.extensions)
       index = FraggyIndex(version: ConfigVersion, kind: fraggy_folder, folder: folder)
     
     writeIndexToFile(index, indexPath)
-    echo &"  Saved index to: {indexPath}"
-    echo &"  Indexed {index.folder.files.len} files"
+    info &"Saved index to: {indexPath}"
+    info &"Indexed {index.folder.files.len} files"
   
   # Index git repos
   for repoPath in config.gitRepos:
     if not dirExists(repoPath):
-      echo &"Warning: Git repo does not exist: {repoPath}"
+      warn &"Git repo does not exist: {repoPath}"
       continue
     
     if not dirExists(repoPath / ".git"):
-      echo &"Warning: {repoPath} is not a git repository"
+      warn &"{repoPath} is not a git repository"
       continue
     
-    echo &"Indexing git repo: {repoPath}"
+    info &"Indexing git repo: {repoPath}"
     
     # Generate filename using just repo name (no commit hash)
     let repoName = extractFilename(repoPath)
@@ -370,22 +370,22 @@ proc indexAll*() =
         if existingIndex.kind == fraggy_git_repo:
           index = updateFraggyIndex(existingIndex, repoPath, config.extensions)
         else:
-          echo "  Warning: Existing index is wrong type, rebuilding..."
+          warn "Existing index is wrong type, rebuilding..."
           let repo = newFraggyGitRepo(repoPath, config.extensions)
           index = FraggyIndex(version: ConfigVersion, kind: fraggy_git_repo, repo: repo)
       except:
-        echo "  Warning: Could not load existing index, rebuilding..."
+        warn "Could not load existing index, rebuilding..."
         let repo = newFraggyGitRepo(repoPath, config.extensions)
         index = FraggyIndex(version: ConfigVersion, kind: fraggy_git_repo, repo: repo)
     else:
       # Create new index
-      echo "  Creating new index..."
+      info "Creating new index..."
       let repo = newFraggyGitRepo(repoPath, config.extensions)
       index = FraggyIndex(version: ConfigVersion, kind: fraggy_git_repo, repo: repo)
     
     writeIndexToFile(index, indexPath)
-    echo &"  Saved index to: {indexPath}"
-    echo &"  Indexed {index.repo.files.len} files"
+    info &"Saved index to: {indexPath}"
+    info &"Indexed {index.repo.files.len} files"
     let commitHash = getGitCommitHash(repoPath)
     let isDirty = isGitDirty(repoPath)
-    echo &"  Commit: {commitHash[0..7]}... (dirty: {isDirty})" 
+    info &"Commit: {commitHash[0..7]}... (dirty: {isDirty})" 

@@ -3,7 +3,7 @@
 import
   std/[strutils, strformat, os],
   jsony,
-  ./types, ./search
+  ./types, ./search, ./logs
 
 const
   ConfigVersion* = "0.1.0"
@@ -34,7 +34,7 @@ proc loadConfig*(): FraggyConfig =
     let configData = readFile(configPath)
     result = fromJson(configData, FraggyConfig)
   except:
-    echo &"Error loading config from {configPath}: {getCurrentExceptionMsg()}"
+    error &"Error loading config from {configPath}: {getCurrentExceptionMsg()}"
     # Return default config on error
     result = FraggyConfig(
       version: ConfigVersion,
@@ -50,48 +50,58 @@ proc saveConfig*(config: FraggyConfig) =
   try:
     let configData = toJson(config)
     writeFile(configPath, configData)
-    echo &"Config saved to {configPath}"
+    info &"Config saved to {configPath}"
   except:
-    echo &"Error saving config to {configPath}: {getCurrentExceptionMsg()}"
+    error &"Error saving config to {configPath}: {getCurrentExceptionMsg()}"
 
 proc addFolderToConfig*(folderPath: string) =
   ## Add a folder path to the config.
   var config = loadConfig()
+  
+  if not dirExists(folderPath):
+    error &"Directory does not exist: {folderPath}"
+    return
+  
   let absPath = expandFilename(folderPath)
   
   if absPath notin config.folders:
     config.folders.add(absPath)
     saveConfig(config)
-    echo &"Added folder to config: {absPath}"
+    info &"Added folder to config: {absPath}"
   else:
-    echo &"Folder already in config: {absPath}"
+    info &"Folder already in config: {absPath}"
 
 proc addGitRepoToConfig*(repoPath: string) =
   ## Add a git repository path to the config.
   var config = loadConfig()
+  
+  if not dirExists(repoPath):
+    error &"Directory does not exist: {repoPath}"
+    return
+  
   let absPath = expandFilename(repoPath)
   
   if not dirExists(absPath / ".git"):
-    echo &"Error: {absPath} is not a git repository"
+    error &"{absPath} is not a git repository"
     return
   
   if absPath notin config.gitRepos:
     config.gitRepos.add(absPath)
     saveConfig(config)
-    echo &"Added git repo to config: {absPath}"
+    info &"Added git repo to config: {absPath}"
   else:
-    echo &"Git repo already in config: {absPath}"
+    info &"Git repo already in config: {absPath}"
 
 proc showConfig*() =
   ## Display the current configuration.
   let config = loadConfig()
-  echo "Fraggy Configuration:"
-  echo &"  Version: {config.version}"
-  echo &"  Embedding Model: {config.embeddingModel}"
-  echo &"  Extensions: {config.extensions.join(\", \")}"
-  echo &"  Folders ({config.folders.len}):"
+  info "Fraggy Configuration:"
+  info &"  Version: {config.version}"
+  info &"  Embedding Model: {config.embeddingModel}"
+  info &"  Extensions: {config.extensions.join(\", \")}"
+  info &"  Folders ({config.folders.len}):"
   for folder in config.folders:
-    echo &"    - {folder}"
-  echo &"  Git Repos ({config.gitRepos.len}):"
+    info &"    - {folder}"
+  info &"  Git Repos ({config.gitRepos.len}):"
   for repo in config.gitRepos:
-    echo &"    - {repo}" 
+    info &"    - {repo}" 

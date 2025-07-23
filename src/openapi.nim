@@ -1,9 +1,9 @@
 ## OpenAPI server for Fraggy search functionality
 
 import
-  std/[strutils, tables, os, json, sequtils],
+  std/[strutils, tables, os, json, sequtils, strformat, algorithm],
   mummy, jsony,
-  ./types, ./search, ./index
+  ./types, ./search, ./index, ./logs
 
 # Request/Response types for API endpoints
 type
@@ -19,16 +19,16 @@ type
     model*: string
     indexPath*: string
 
+  # Simplified ripgrep-like response format
   RipgrepResponse* = object
-    results*: seq[RipgrepResultApi]
-    totalResults*: int
+    matches*: seq[RipgrepMatch]
 
-  RipgrepResultApi* = object
-    file*: FileInfo
-    lineNumber*: int
-    lineContent*: string
-    matchStart*: int
-    matchEnd*: int
+  RipgrepMatch* = object
+    path*: string
+    line_number*: int
+    line*: string
+    match_start*: int
+    match_end*: int
 
   EmbeddingSearchResponse* = object
     results*: seq[SimilarityResultApi]
@@ -55,6 +55,15 @@ type
     code*: int
 
 # Helper functions for converting fraggy types to API types
+proc toRipgrepMatch*(ripgrepResult: RipgrepResult): RipgrepMatch =
+  RipgrepMatch(
+    path: ripgrepResult.file.filename,
+    line_number: ripgrepResult.lineNumber,
+    line: ripgrepResult.lineContent,
+    match_start: ripgrepResult.matchStart,
+    match_end: ripgrepResult.matchEnd
+  )
+
 proc toFileInfo*(fraggyFile: FraggyFile): FileInfo =
   FileInfo(
     path: fraggyFile.path,
@@ -68,15 +77,6 @@ proc toFragmentInfo*(fragment: FraggyFragment): FragmentInfo =
     endLine: fragment.endLine,
     fragmentType: fragment.fragmentType,
     contentScore: fragment.contentScore
-  )
-
-proc toRipgrepResultApi*(ripgrepResult: RipgrepResult): RipgrepResultApi =
-  RipgrepResultApi(
-    file: ripgrepResult.file.toFileInfo(),
-    lineNumber: ripgrepResult.lineNumber,
-    lineContent: ripgrepResult.lineContent,
-    matchStart: ripgrepResult.matchStart,
-    matchEnd: ripgrepResult.matchEnd
   )
 
 proc toSimilarityResultApi*(simResult: SimilarityResult): SimilarityResultApi =
@@ -101,11 +101,16 @@ proc handleRipgrepSearch*(request: Request) =
     let index = readIndexFromFile(reqData.indexPath)
     let results = ripgrepSearch(index, reqData.pattern, reqData.caseSensitive, reqData.maxResults)
     
-    let apiResults = results.map(toRipgrepResultApi)
-    let response = RipgrepResponse(
-      results: apiResults,
-      totalResults: apiResults.len
-    )
+    # Sort results like ripgrep (by filename then line number)
+    let sortedResults = results.sorted do (a, b: RipgrepResult) -> int:
+      let fileCompare = cmp(a.file.filename, b.file.filename)
+      if fileCompare != 0:
+        fileCompare
+      else:
+        cmp(a.lineNumber, b.lineNumber)
+    
+    let matches = sortedResults.map(toRipgrepMatch)
+    let response = RipgrepResponse(matches: matches)
     
     request.respond(200, body = response.toJson())
     
@@ -206,27 +211,19 @@ proc buildRipgrepSearchSpec*(): JsonNode =
               "schema": {
                 "type": "object",
                 "properties": {
-                  "results": {
+                  "matches": {
                     "type": "array",
                     "items": {
                       "type": "object",
                       "properties": {
-                        "file": {
-                          "type": "object",
-                          "properties": {
-                            "path": {"type": "string"},
-                            "filename": {"type": "string"},
-                            "hash": {"type": "string"}
-                          }
-                        },
-                        "lineNumber": {"type": "integer"},
-                        "lineContent": {"type": "string"},
-                        "matchStart": {"type": "integer"},
-                        "matchEnd": {"type": "integer"}
+                        "path": {"type": "string"},
+                        "line_number": {"type": "integer"},
+                        "line": {"type": "string"},
+                        "match_start": {"type": "integer"},
+                        "match_end": {"type": "integer"}
                       }
                     }
-                  },
-                  "totalResults": {"type": "integer"}
+                  }
                 }
               }
             }
@@ -469,8 +466,8 @@ proc router*(request: Request) =
 
 # Server startup
 proc startServer*(port: int = 8080, address: string = "localhost") =
-  echo "Starting Fraggy Search API server on ", address, ":", port
-  echo "OpenAPI spec available at: http://", address, ":", port, "/openapi.json"
+  info &"Starting Fraggy Search API server on {address}:{port}"
+  info &"OpenAPI spec available at: http://{address}:{port}/openapi.json"
   
   let server = newServer(router)
   server.serve(Port(port), address) 

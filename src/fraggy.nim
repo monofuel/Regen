@@ -2,7 +2,7 @@
 
 import
   std/[strutils, strformat, os, algorithm],
-  ./types, ./configs, ./index, ./search, ./openapi
+  ./types, ./configs, ./index, ./search, ./openapi, ./logs
 
 # re-export our internal modules for convenience
 export types, configs, index, search, openapi
@@ -25,28 +25,28 @@ export types, configs, index, search, openapi
 
 proc printHelp*() =
   ## Print help information for fraggy commands.
-  echo "Usage: fraggy <command> [options]"
-  echo ""
-  echo "Configuration Commands:"
-  echo "  --add-folder-index <path>   Add folder to tracking config"
-  echo "  --add-repo-index <path>     Add git repository to tracking config"
-  echo "  --show-config               Show current configuration"
-  echo "  --index-all                 Index all configured folders and repos"
-  echo ""
-  echo "Server Commands:"
-  echo "  --server [port] [address]   Start OpenAPI server (default: 8080, localhost)"
-  echo ""
-  echo "Search Commands:"
-  echo "  -r, --ripgrep-search <pattern> [options]"
-  echo "    Options: --case-insensitive --max-results=N"
-  echo "  -e, --embedding-search <query> [options]"
-  echo "    Options: --max-results=N --model=MODEL"
-  echo ""
-  echo "Note: Search commands automatically find and search all available indexes."
-  echo "Use --index-all to create/update indexes before searching."
-  echo ""
-  echo "Other:"
-  echo "  help                        Show this help message"
+  info "Usage: fraggy <command> [options]"
+  info ""
+  info "Configuration Commands:"
+  info "  --add-folder-index <path>   Add folder to tracking config"
+  info "  --add-repo-index <path>     Add git repository to tracking config"
+  info "  --show-config               Show current configuration"
+  info "  --index-all                 Index all configured folders and repos"
+  info ""
+  info "Server Commands:"
+  info "  --server [port] [address]   Start OpenAPI server (default: 8080, localhost)"
+  info ""
+  info "Search Commands:"
+  info "  -r, --ripgrep-search <pattern> [options]"
+  info "    Options: --case-insensitive --max-results=N"
+  info "  -e, --embedding-search <query> [options]"
+  info "    Options: --max-results=N --model=MODEL"
+  info ""
+  info "Note: Search commands automatically find and search all available indexes."
+  info "Use --index-all to create/update indexes before searching."
+  info ""
+  info "Other:"
+  info "  help                        Show this help message"
 
 proc findAllIndexes*(): seq[string] =
   ## Find all available index files from configured folders and repos.
@@ -69,14 +69,14 @@ proc findAllIndexes*(): seq[string] =
         result.add(file.path)
   
   if result.len == 0:
-    echo "No indexes found. Run 'fraggy --index-all' first to create indexes."
+    warn "No indexes found. Run 'fraggy --index-all' first to create indexes."
 
 proc performRipgrepSearch*(args: seq[string]) =
   ## Perform a ripgrep search from command line arguments.
   if args.len < 2:
-    echo "Error: ripgrep search requires a search pattern"
-    echo "Usage: fraggy -r <pattern> [--case-insensitive] [--max-results=N]"
-    echo "   or: fraggy --ripgrep-search <pattern> [options]"
+    error "ripgrep search requires a search pattern"
+    info "Usage: fraggy -r <pattern> [--case-insensitive] [--max-results=N]"
+    info "   or: fraggy --ripgrep-search <pattern> [options]"
     return
   
   let pattern = args[1]
@@ -91,16 +91,11 @@ proc performRipgrepSearch*(args: seq[string]) =
       try:
         maxResults = parseInt(args[i].split("=")[1])
       except:
-        echo "Warning: Invalid max-results value, using default: 100"
+        warn "Invalid max-results value, using default: 100"
   
   let indexPaths = findAllIndexes()
   if indexPaths.len == 0:
     return
-  
-  echo &"Searching for pattern: '{pattern}'"
-  echo &"Case sensitive: {caseSensitive}, Max results: {maxResults}"
-  echo &"Searching across {indexPaths.len} indexes..."
-  echo "---"
   
   var allResults: seq[RipgrepResult] = @[]
   
@@ -110,35 +105,36 @@ proc performRipgrepSearch*(args: seq[string]) =
       let results = ripgrepSearch(index, pattern, caseSensitive, maxResults)
       allResults.add(results)
     except Exception as e:
-      echo &"Warning: Could not search index {extractFilename(indexPath)}: {e.msg}"
+      warn &"Could not search index {extractFilename(indexPath)}: {e.msg}"
   
-  # Sort all results by relevance/file name
+  # Sort all results by filename then line number (like ripgrep)
   allResults.sort do (a, b: RipgrepResult) -> int:
-    cmp(a.file.filename, b.file.filename)
+    let fileCompare = cmp(a.file.filename, b.file.filename)
+    if fileCompare != 0:
+      fileCompare
+    else:
+      cmp(a.lineNumber, b.lineNumber)
   
   # Limit to max results
   if allResults.len > maxResults:
     allResults = allResults[0..<maxResults]
   
-  if allResults.len == 0:
-    echo "No matches found."
-    return
-  
-  echo &"Found {allResults.len} results:"
-  echo ""
-  
-  for i, result in allResults:
-    echo &"[{i+1}] {result.file.filename}:{result.lineNumber}"
-    echo &"    {result.lineContent}"
-    echo &"    Match at columns {result.matchStart}-{result.matchEnd}"
-    echo ""
+  # Group by filename and output in ripgrep format
+  var currentFile = ""
+  for result in allResults:
+    if result.file.filename != currentFile:
+      if currentFile != "":
+        echo ""  # Blank line between files
+      echo result.file.filename  # File header
+      currentFile = result.file.filename
+    echo &"{result.lineNumber}:{result.lineContent}"  # line_number:content
 
 proc performEmbeddingSearch*(args: seq[string]) =
   ## Perform an embedding search from command line arguments.
   if args.len < 2:
-    echo "Error: embedding search requires a search query"
-    echo "Usage: fraggy -e <query> [--max-results=N] [--model=MODEL]"
-    echo "   or: fraggy --embedding-search <query> [options]"
+    error "embedding search requires a search query"
+    info "Usage: fraggy -e <query> [--max-results=N] [--model=MODEL]"
+    info "   or: fraggy --embedding-search <query> [options]"
     return
   
   let query = args[1]
@@ -151,7 +147,7 @@ proc performEmbeddingSearch*(args: seq[string]) =
       try:
         maxResults = parseInt(args[i].split("=")[1])
       except:
-        echo "Warning: Invalid max-results value, using default: 10"
+        warn "Invalid max-results value, using default: 10"
     elif args[i].startsWith("--model="):
       model = args[i].split("=")[1]
   
@@ -159,10 +155,10 @@ proc performEmbeddingSearch*(args: seq[string]) =
   if indexPaths.len == 0:
     return
   
-  echo &"Searching for: '{query}'"
-  echo &"Model: {model}, Max results: {maxResults}"
-  echo &"Searching across {indexPaths.len} indexes..."
-  echo "---"
+  info &"Searching for: '{query}'"
+  info &"Model: {model}, Max results: {maxResults}"
+  info &"Searching across {indexPaths.len} indexes..."
+  info "---"
   
   var allResults: seq[SimilarityResult] = @[]
   
@@ -172,7 +168,7 @@ proc performEmbeddingSearch*(args: seq[string]) =
       let results = findSimilarFragments(index, query, maxResults, model)
       allResults.add(results)
     except Exception as e:
-      echo &"Warning: Could not search index {extractFilename(indexPath)}: {e.msg}"
+      warn &"Could not search index {extractFilename(indexPath)}: {e.msg}"
   
   # Sort all results by similarity score (highest first)
   allResults.sort do (a, b: SimilarityResult) -> int:
@@ -183,18 +179,18 @@ proc performEmbeddingSearch*(args: seq[string]) =
     allResults = allResults[0..<maxResults]
   
   if allResults.len == 0:
-    echo "No similar fragments found."
+    info "No similar fragments found."
     return
   
-  echo &"Found {allResults.len} similar fragments:"
-  echo ""
+  info &"Found {allResults.len} similar fragments:"
+  info ""
   
   for i, result in allResults:
-    echo &"[{i+1}] {result.file.filename} (similarity: {result.similarity:.3f})"
-    echo &"    Lines {result.fragment.startLine}-{result.fragment.endLine}"
-    echo &"    Type: {result.fragment.fragmentType}"
-    echo &"    Score: {result.fragment.contentScore}"
-    echo ""
+    info &"[{i+1}] {result.file.filename} (similarity: {result.similarity:.3f})"
+    info &"    Lines {result.fragment.startLine}-{result.fragment.endLine}"
+    info &"    Type: {result.fragment.fragmentType}"
+    info &"    Score: {result.fragment.contentScore}"
+    info ""
 
 proc startApiServer*(args: seq[string]) =
   ## Start the OpenAPI server with optional port and address.
@@ -206,12 +202,12 @@ proc startApiServer*(args: seq[string]) =
     try:
       port = parseInt(args[1])
     except:
-      echo "Warning: Invalid port number, using default: 8080"
+      warn "Invalid port number, using default: 8080"
   
   if args.len > 2:
     address = args[2]
   
-  echo &"Starting Fraggy OpenAPI server on {address}:{port}"
+  info &"Starting Fraggy OpenAPI server on {address}:{port}"
   startServer(port, address)
 
 proc main() =
@@ -225,13 +221,13 @@ proc main() =
   case cmd:
   of "--add-folder-index":
     if args.len < 2:
-      echo "Error: --add-folder-index requires a path argument"
+      error "--add-folder-index requires a path argument"
       printHelp()
       return
     addFolderToConfig(args[1])
   of "--add-repo-index":
     if args.len < 2:
-      echo "Error: --add-repo-index requires a path argument"
+      error "--add-repo-index requires a path argument"
       printHelp()
       return
     addGitRepoToConfig(args[1])
@@ -246,8 +242,8 @@ proc main() =
   of "-e", "--embedding-search":
     performEmbeddingSearch(args)
   else:
-    echo &"Unknown command: {cmd}"
-    echo ""
+    error &"Unknown command: {cmd}"
+    info ""
     printHelp()
 
 when isMainModule:
