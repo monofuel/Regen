@@ -45,6 +45,8 @@ This approach ensures full stack traces in CI environments and makes debugging s
 - `nimble benchmark` can be used to run benchmark tests.
 - benchmark is at ./tests/bench_fraggy.nim
 
+- do not `echo` in tests, they should not log anything when successful
+
 ## Gold Master Testing
 
 - some of our tests like tests/test_fragments_gold.nim use a pattern of gold master testing
