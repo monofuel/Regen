@@ -1,7 +1,7 @@
 ## OpenAPI server for Fraggy search functionality
 
 import
-  std/[strutils, os, json, sequtils, strformat, algorithm],
+  std/[strutils, os, json, sequtils, strformat, algorithm, options],
   mummy, jsony,
   ./types, ./search, ./index, ./logs, ./configs
 
@@ -9,13 +9,13 @@ import
 type
   RipgrepRequest* = object
     pattern*: string
-    caseSensitive*: bool
-    maxResults*: int
+    caseSensitive*: Option[bool]
+    maxResults*: Option[int]
 
   EmbeddingSearchRequest* = object
     query*: string
-    maxResults*: int
-    model*: string
+    maxResults*: Option[int]
+    model*: Option[string]
 
   # Simplified ripgrep-like response format
   RipgrepResponse* = object
@@ -130,9 +130,13 @@ proc isAuthenticated*(request: Request): bool =
 
 # API endpoint handlers
 proc handleRipgrepSearch*(request: Request) =
+  # Set response headers
+  var headers: HttpHeaders
+  headers["Content-Type"] = "application/json"
+  
   # Check authentication
   if not isAuthenticated(request):
-    request.respond(401, body = ErrorResponse(
+    request.respond(401, headers, body = ErrorResponse(
       error: "Unauthorized - Bearer token required",
       code: 401
     ).toJson())
@@ -141,10 +145,14 @@ proc handleRipgrepSearch*(request: Request) =
   try:
     let reqData = fromJson(request.body, RipgrepRequest)
     
+    # Extract values with defaults
+    let caseSensitive = reqData.caseSensitive.get(true)
+    let maxResults = reqData.maxResults.get(100)
+    
     # Find all available indexes from config
     let indexPaths = findAllIndexes()
     if indexPaths.len == 0:
-      request.respond(400, body = ErrorResponse(
+      request.respond(400, headers, body = ErrorResponse(
         error: "No indexes found. Run 'fraggy --index-all' first to create indexes.",
         code: 400
       ).toJson())
@@ -156,7 +164,7 @@ proc handleRipgrepSearch*(request: Request) =
     for indexPath in indexPaths:
       try:
         let index = readIndexFromFile(indexPath)
-        let results = ripgrepSearch(index, reqData.pattern, reqData.caseSensitive, reqData.maxResults)
+        let results = ripgrepSearch(index, reqData.pattern, caseSensitive, maxResults)
         allResults.add(results)
       except Exception as e:
         # Log warning but continue with other indexes
@@ -171,24 +179,28 @@ proc handleRipgrepSearch*(request: Request) =
         cmp(a.lineNumber, b.lineNumber)
     
     # Limit to max results
-    if allResults.len > reqData.maxResults:
-      allResults = allResults[0..<reqData.maxResults]
+    if allResults.len > maxResults:
+      allResults = allResults[0..<maxResults]
     
     let matches = allResults.map(toRipgrepMatch)
     let response = RipgrepResponse(matches: matches)
     
-    request.respond(200, body = response.toJson())
+    request.respond(200, headers, body = response.toJson())
     
   except Exception as e:
-    request.respond(500, body = ErrorResponse(
+    request.respond(500, headers, body = ErrorResponse(
       error: "Error: " & e.msg,
       code: 500
     ).toJson())
 
 proc handleEmbeddingSearch*(request: Request) =
+  # Set response headers
+  var headers: HttpHeaders
+  headers["Content-Type"] = "application/json"
+  
   # Check authentication
   if not isAuthenticated(request):
-    request.respond(401, body = ErrorResponse(
+    request.respond(401, headers, body = ErrorResponse(
       error: "Unauthorized - Bearer token required",
       code: 401
     ).toJson())
@@ -197,10 +209,14 @@ proc handleEmbeddingSearch*(request: Request) =
   try:
     let reqData = fromJson(request.body, EmbeddingSearchRequest)
     
+    # Extract values with defaults
+    let maxResults = reqData.maxResults.get(10)
+    let model = reqData.model.get("nomic-embed-text")
+    
     # Find all available indexes from config
     let indexPaths = findAllIndexes()
     if indexPaths.len == 0:
-      request.respond(400, body = ErrorResponse(
+      request.respond(400, headers, body = ErrorResponse(
         error: "No indexes found. Run 'fraggy --index-all' first to create indexes.",
         code: 400
       ).toJson())
@@ -212,7 +228,7 @@ proc handleEmbeddingSearch*(request: Request) =
     for indexPath in indexPaths:
       try:
         let index = readIndexFromFile(indexPath)
-        let results = findSimilarFragments(index, reqData.query, reqData.maxResults, reqData.model)
+        let results = findSimilarFragments(index, reqData.query, maxResults, model)
         allResults.add(results)
       except Exception as e:
         # Log warning but continue with other indexes
@@ -223,8 +239,8 @@ proc handleEmbeddingSearch*(request: Request) =
       cmp(b.similarity, a.similarity)
     
     # Limit to max results
-    if allResults.len > reqData.maxResults:
-      allResults = allResults[0..<reqData.maxResults]
+    if allResults.len > maxResults:
+      allResults = allResults[0..<maxResults]
     
     let apiResults = allResults.map(toSimilarityResultApi)
     let response = EmbeddingSearchResponse(
@@ -232,10 +248,10 @@ proc handleEmbeddingSearch*(request: Request) =
       totalResults: apiResults.len
     )
     
-    request.respond(200, body = response.toJson())
+    request.respond(200, headers, body = response.toJson())
     
   except Exception as e:
-    request.respond(500, body = ErrorResponse(
+    request.respond(500, headers, body = ErrorResponse(
       error: "Error: " & e.msg,
       code: 500
     ).toJson())
@@ -511,7 +527,9 @@ proc handleOpenApiSpec*(request: Request) =
     headers["Content-Type"] = "application/json"
     request.respond(200, headers, body = $spec)
   except Exception as e:
-    request.respond(500, body = ErrorResponse(
+    var errorHeaders: HttpHeaders
+    errorHeaders["Content-Type"] = "application/json"
+    request.respond(500, errorHeaders, body = ErrorResponse(
       error: "Failed to generate spec: " & e.msg,
       code: 500
     ).toJson())

@@ -14,7 +14,7 @@
 - src/logs.nim is for logging
 
 - types.nim and configs.nim should not import other files, to avoid circular dependencies.
-- any 'magic number' constants should live in configs.nim
+- any 'magic number' constants required by multiple files should live in configs.nim
 - DO NOT use `echo` for debugging, use our logging functions to make it easier to selectively mute debug logs.
 - only use `echo` for intentional application output (eg: ripgrep output)
 
@@ -132,7 +132,7 @@ proc sumOfMultiples(limit: int): int =
 - please prefer const over let, and let over var.
 - please use capitalized camelCase for consts
 - use regular camelcase for var and let
-- do not place 'magic variables' in the code, instead make them a const and pull them up to the top
+- do not place 'magic variables' in the code, instead make them a const and pull them up to the top of the file
 - for example:
 
 ```

@@ -93,7 +93,16 @@ proc ripgrepSearch*(index: FraggyIndex, pattern: string, caseSensitive: bool = t
   # Get the search directory based on index type
   let searchPath = case index.kind
     of fraggy_git_repo:
-      if index.repo.files.len > 0: index.repo.files[0].path.parentDir() else: "."
+      # Find the common root directory of all files (should be the repo root)
+      if index.repo.files.len > 0:
+        let firstPath = index.repo.files[0].path
+        var commonRoot = firstPath.parentDir()
+        # Keep going up until we find a directory that contains .git or is the root
+        while not dirExists(commonRoot / ".git") and commonRoot != "/" and commonRoot.len > 1:
+          commonRoot = commonRoot.parentDir()
+        commonRoot
+      else: 
+        "."
     of fraggy_folder:
       index.folder.path
   
