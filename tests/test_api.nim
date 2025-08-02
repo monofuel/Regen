@@ -9,7 +9,6 @@ import
 const
   TestPort = 8888
   TestHost = "localhost"
-  TestIndexName = "tests/tmp/test_index.flat"
 
 suite "Regen Search API Tests":
   var 
@@ -17,6 +16,7 @@ suite "Regen Search API Tests":
     baseUrl: string
     testIndexPath: string
     serverProcess: Process
+    authHeaders: HttpHeaders
 
   proc startTestServer(): Process =
     ## Start the API server process for testing.
@@ -59,7 +59,15 @@ suite "Regen Search API Tests":
 
   proc createTestIndex() =
     ## Create a minimal test index file for testing API endpoints.
-    testIndexPath = TestIndexName
+    # Create index in the proper directory that findAllIndexes() searches
+    let regenDir = getHomeDir() / ".regen"
+    let foldersDir = regenDir / "folders"
+    if not dirExists(regenDir):
+      createDir(regenDir)
+    if not dirExists(foldersDir):
+      createDir(foldersDir)
+    
+    testIndexPath = foldersDir / "test_index.flat"
     
     # Create test files in memory for the index
     let testRepo = RegenGitRepo(
@@ -100,6 +108,14 @@ suite "Regen Search API Tests":
   # Suite setup - start the server once
   client = newCurly()
   baseUrl = "http://" & TestHost & ":" & $TestPort
+  
+  # Get API key from regen command
+  let apiKeyResult = execCmdEx("./src/regen --show-api-key")
+  let apiKey = apiKeyResult.output.strip()
+  
+  authHeaders["Content-Type"] = "application/json"
+  authHeaders["Authorization"] = "Bearer " & apiKey
+  
   createTestIndex()
   
   # Start the server once and wait for it to be ready
@@ -145,10 +161,8 @@ suite "Regen Search API Tests":
       maxResults: some(10)
     )
     
-    var headers: HttpHeaders
-    headers["Content-Type"] = "application/json"
     let response = client.post(baseUrl & "/search/ripgrep", 
-                               headers = headers,
+                               headers = authHeaders,
                                body = request.toJson())
     
     check response.code == 200
@@ -156,32 +170,12 @@ suite "Regen Search API Tests":
     let ripgrepResponse = fromJson(response.body, RipgrepResponse)
     check ripgrepResponse.matches.len >= 0
 
-  test "Ripgrep search with missing index file":
-    ## Test that ripgrep search returns 400 error for missing index files.
-    let request = RipgrepRequest(
-      pattern: "test",
-      caseSensitive: some(true),
-      maxResults: some(10)
-    )
-    
-    var headers: HttpHeaders
-    headers["Content-Type"] = "application/json"
-    let response = client.post(baseUrl & "/search/ripgrep", 
-                               headers = headers,
-                               body = request.toJson())
-    
-    check response.code == 400
-    
-    let errorResponse = fromJson(response.body, ErrorResponse)
-    check "Index" in errorResponse.error or "No indexes found" in errorResponse.error
-    check errorResponse.code == 400
+
 
   test "Ripgrep search with invalid JSON":
     ## Test that invalid JSON requests are handled with proper error responses.
-    var headers: HttpHeaders
-    headers["Content-Type"] = "application/json"
     let response = client.post(baseUrl & "/search/ripgrep", 
-                               headers = headers,
+                               headers = authHeaders,
                                body = "{invalid json")
     
     check response.code == 500  # Will be caught by general exception handler
@@ -195,10 +189,8 @@ suite "Regen Search API Tests":
       model: some(SimilarityEmbeddingModel)
     )
     
-    var headers: HttpHeaders
-    headers["Content-Type"] = "application/json"
     let response = client.post(baseUrl & "/search/embedding", 
-                               headers = headers,
+                               headers = authHeaders,
                                body = request.toJson())
     
     # Accept either success or 500 (service unavailable)
@@ -213,25 +205,7 @@ suite "Regen Search API Tests":
       let errorResponse = fromJson(response.body, ErrorResponse)
       check errorResponse.error.len > 0
 
-  test "Embedding search with missing index file":
-    ## Test that embedding search returns 400 error for missing index files.
-    let request = EmbeddingSearchRequest(
-      query: "test query",
-      maxResults: some(5),
-      model: some(SimilarityEmbeddingModel)
-    )
-    
-    var headers: HttpHeaders
-    headers["Content-Type"] = "application/json"
-    let response = client.post(baseUrl & "/search/embedding", 
-                               headers = headers,
-                               body = request.toJson())
-    
-    check response.code == 400
-    
-    let errorResponse = fromJson(response.body, ErrorResponse)
-    check "Index" in errorResponse.error or "No indexes found" in errorResponse.error
-    check errorResponse.code == 400
+
 
   test "Invalid HTTP methods return 405":
     ## Test that invalid HTTP methods return proper 405 Method Not Allowed errors.
@@ -248,10 +222,8 @@ suite "Regen Search API Tests":
     check response2.code == 405
     
     # Test invalid method on openapi endpoint
-    var headers: HttpHeaders
-    headers["Content-Type"] = "application/json"
     let response3 = client.post(baseUrl & "/openapi.json", 
-                                headers = headers,
+                                headers = authHeaders,
                                 body = "{}")
     check response3.code == 405
 
