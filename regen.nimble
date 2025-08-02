@@ -6,7 +6,7 @@ license     = "MIT"
 srcDir = "src"
 
 task benchmark, "Run performance benchmarks":
-  exec "nim c -r tests/bench_fraggy.nim"
+  exec "nim c -r tests/bench_regen.nim"
 
 requires "nim >= 2.0.0"
 requires "flatty >= 0.3.4"

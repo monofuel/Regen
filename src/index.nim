@@ -1,30 +1,30 @@
-## Indexing functionality for Fraggy - creating and managing file indexes
+## Indexing functionality for Regen - creating and managing file indexes
 
 import
   std/[strutils, threadpool, strformat, os, times, osproc, algorithm, sequtils],
   flatty, crunchy,
   ./types, ./search, ./configs, ./logs
 
-proc writeIndexToFile*(index: FraggyIndex, filepath: string) =
-  ## Write a FraggyIndex object to a file using flatty serialization.
+proc writeIndexToFile*(index: RegenIndex, filepath: string) =
+  ## Write a RegenIndex object to a file using flatty serialization.
   let data = toFlatty(index)
   writeFile(filepath, data)
 
-proc readIndexFromFile*(filepath: string): FraggyIndex =
-  ## Read a FraggyIndex object from a file using flatty deserialization.
+proc readIndexFromFile*(filepath: string): RegenIndex =
+  ## Read a RegenIndex object from a file using flatty deserialization.
   let data = readFile(filepath)
-  fromFlatty(data, FraggyIndex)
+  fromFlatty(data, RegenIndex)
 
 # Legacy functions for backward compatibility
-proc writeRepoToFile*(repo: FraggyGitRepo, filepath: string) =
-  ## Write a FraggyGitRepo object to a file using flatty serialization.
-  let index = FraggyIndex(version: "0.1.0", kind: fraggy_git_repo, repo: repo)
+proc writeRepoToFile*(repo: RegenGitRepo, filepath: string) =
+  ## Write a RegenGitRepo object to a file using flatty serialization.
+  let index = RegenIndex(version: "0.1.0", kind: regen_git_repo, repo: repo)
   writeIndexToFile(index, filepath)
 
-proc readRepoFromFile*(filepath: string): FraggyGitRepo =
-  ## Read a FraggyGitRepo object from a file using flatty deserialization.
+proc readRepoFromFile*(filepath: string): RegenGitRepo =
+  ## Read a RegenGitRepo object from a file using flatty deserialization.
   let index = readIndexFromFile(filepath)
-  if index.kind == fraggy_git_repo:
+  if index.kind == regen_git_repo:
     result = index.repo
   else:
     raise newException(ValueError, "File does not contain a git repo index")
@@ -52,12 +52,12 @@ proc isGitDirty*(repoPath: string): bool =
   except:
     result = true
 
-proc newFraggyFragment*(content: string, filePath: string, startLine: int = 1, endLine: int = -1): FraggyFragment =
-  ## Create a new FraggyFragment from content.
+proc newRegenFragment*(content: string, filePath: string, startLine: int = 1, endLine: int = -1): RegenFragment =
+  ## Create a new RegenFragment from content.
   let actualEndLine = if endLine == -1: content.split('\n').len else: endLine
   let embedding = generateEmbedding(content)
   
-  result = FraggyFragment(
+  result = RegenFragment(
     startLine: startLine,
     endLine: actualEndLine,
     embedding: embedding,
@@ -68,13 +68,13 @@ proc newFraggyFragment*(content: string, filePath: string, startLine: int = 1, e
     hash: createFileHash(content)
   )
 
-proc newFraggyFile*(filePath: string): FraggyFile =
-  ## Create a new FraggyFile by reading and processing the file.
+proc newRegenFile*(filePath: string): RegenFile =
+  ## Create a new RegenFile by reading and processing the file.
   let content = readFile(filePath)
   let fileInfo = getFileInfo(filePath)
-  let fragment = newFraggyFragment(content, filePath)
+  let fragment = newRegenFragment(content, filePath)
   
-  result = FraggyFile(
+  result = RegenFile(
     path: filePath,
     filename: extractFilename(filePath),
     hash: createFileHash(content),
@@ -95,55 +95,55 @@ proc findProjectFiles*(rootPath: string, extensions: seq[string]): seq[string] =
   # Sort for consistent ordering
   result.sort()
 
-proc newFraggyGitRepo*(repoPath: string, extensions: seq[string]): FraggyGitRepo =
-  ## Create a new FraggyGitRepo by scanning the repository in parallel.
+proc newRegenGitRepo*(repoPath: string, extensions: seq[string]): RegenGitRepo =
+  ## Create a new RegenGitRepo by scanning the repository in parallel.
   let filePaths = findProjectFiles(repoPath, extensions)
   
   # Process all files in parallel
-  var fileFutures: seq[FlowVar[FraggyFile]] = @[]
+  var fileFutures: seq[FlowVar[RegenFile]] = @[]
   for filePath in filePaths:
-    fileFutures.add(spawn newFraggyFile(filePath))
+    fileFutures.add(spawn newRegenFile(filePath))
   
-  var fraggyFiles: seq[FraggyFile] = @[]
+  var regenFiles: seq[RegenFile] = @[]
   for future in fileFutures:
-    fraggyFiles.add(^future)
+    regenFiles.add(^future)
   
-  result = FraggyGitRepo(
+  result = RegenGitRepo(
     name: extractFilename(repoPath),
     latestCommitHash: getGitCommitHash(repoPath),
     isDirty: isGitDirty(repoPath),
-    files: fraggyFiles
+    files: regenFiles
   )
 
-proc newFraggyFolder*(folderPath: string, extensions: seq[string]): FraggyFolder =
-  ## Create a new FraggyFolder by scanning the folder in parallel.
+proc newRegenFolder*(folderPath: string, extensions: seq[string]): RegenFolder =
+  ## Create a new RegenFolder by scanning the folder in parallel.
   let filePaths = findProjectFiles(folderPath, extensions)
   
   # Process all files in parallel
-  var fileFutures: seq[FlowVar[FraggyFile]] = @[]
+  var fileFutures: seq[FlowVar[RegenFile]] = @[]
   for filePath in filePaths:
-    fileFutures.add(spawn newFraggyFile(filePath))
+    fileFutures.add(spawn newRegenFile(filePath))
   
-  var fraggyFiles: seq[FraggyFile] = @[]
+  var regenFiles: seq[RegenFile] = @[]
   for future in fileFutures:
-    fraggyFiles.add(^future)
+    regenFiles.add(^future)
   
-  result = FraggyFolder(
+  result = RegenFolder(
     path: folderPath,
-    files: fraggyFiles
+    files: regenFiles
   )
 
-proc newFraggyIndex*(indexType: FraggyIndexType, path: string, extensions: seq[string]): FraggyIndex =
-  ## Create a new FraggyIndex of the specified type using parallel processing.
-  result = FraggyIndex(version: "0.1.0", kind: indexType)
+proc newRegenIndex*(indexType: RegenIndexType, path: string, extensions: seq[string]): RegenIndex =
+  ## Create a new RegenIndex of the specified type using parallel processing.
+  result = RegenIndex(version: "0.1.0", kind: indexType)
   
   case indexType
-  of fraggy_git_repo:
-    result.repo = newFraggyGitRepo(path, extensions)
-  of fraggy_folder:
-    result.folder = newFraggyFolder(path, extensions) 
+  of regen_git_repo:
+    result.repo = newRegenGitRepo(path, extensions)
+  of regen_folder:
+    result.folder = newRegenFolder(path, extensions) 
 
-proc needsReindexing*(existingFile: FraggyFile, currentPath: string): bool =
+proc needsReindexing*(existingFile: RegenFile, currentPath: string): bool =
   ## Check if a file needs to be reindexed based on modification time and hash.
   if not fileExists(currentPath):
     return true
@@ -163,7 +163,7 @@ proc needsReindexing*(existingFile: FraggyFile, currentPath: string): bool =
   except:
     return true
 
-proc updateFraggyIndex*(existingIndex: FraggyIndex, currentPath: string, extensions: seq[string]): FraggyIndex =
+proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, extensions: seq[string]): RegenIndex =
   ## Update an existing index with only the files that have changed.
   result = existingIndex
   
@@ -173,7 +173,7 @@ proc updateFraggyIndex*(existingIndex: FraggyIndex, currentPath: string, extensi
   var filesToRemove: seq[int] = @[]
   
   case result.kind:
-  of fraggy_folder:
+  of regen_folder:
     # Check existing files for changes
     for i, existingFile in result.folder.files:
       if existingFile.path notin currentFiles:
@@ -202,9 +202,9 @@ proc updateFraggyIndex*(existingIndex: FraggyIndex, currentPath: string, extensi
       
       # Process files in parallel if there are many
       if filesToUpdate.len > 3:
-        var fileFutures: seq[FlowVar[FraggyFile]] = @[]
+        var fileFutures: seq[FlowVar[RegenFile]] = @[]
         for filePath in filesToUpdate:
-          fileFutures.add(spawn newFraggyFile(filePath))
+          fileFutures.add(spawn newRegenFile(filePath))
         
         for future in fileFutures:
           let newFile = ^future
@@ -221,7 +221,7 @@ proc updateFraggyIndex*(existingIndex: FraggyIndex, currentPath: string, extensi
       else:
         # Process serially for small numbers
         for filePath in filesToUpdate:
-          let newFile = newFraggyFile(filePath)
+          let newFile = newRegenFile(filePath)
           var existingIdx = -1
           for i, file in result.folder.files:
             if file.path == newFile.path:
@@ -232,7 +232,7 @@ proc updateFraggyIndex*(existingIndex: FraggyIndex, currentPath: string, extensi
           else:
             result.folder.files.add(newFile)
   
-  of fraggy_git_repo:
+  of regen_git_repo:
     # Update git-specific info
     result.repo.latestCommitHash = getGitCommitHash(currentPath)
     result.repo.isDirty = isGitDirty(currentPath)
@@ -265,9 +265,9 @@ proc updateFraggyIndex*(existingIndex: FraggyIndex, currentPath: string, extensi
       
       # Process files in parallel if there are many
       if filesToUpdate.len > 3:
-        var fileFutures: seq[FlowVar[FraggyFile]] = @[]
+        var fileFutures: seq[FlowVar[RegenFile]] = @[]
         for filePath in filesToUpdate:
-          fileFutures.add(spawn newFraggyFile(filePath))
+          fileFutures.add(spawn newRegenFile(filePath))
         
         for future in fileFutures:
           let newFile = ^future
@@ -284,7 +284,7 @@ proc updateFraggyIndex*(existingIndex: FraggyIndex, currentPath: string, extensi
       else:
         # Process serially for small numbers
         for filePath in filesToUpdate:
-          let newFile = newFraggyFile(filePath)
+          let newFile = newRegenFile(filePath)
           var existingIdx = -1
           for i, file in result.repo.files:
             if file.path == newFile.path:
@@ -315,30 +315,30 @@ proc indexAll*() =
     # Generate simpler filename without hash
     let folderName = extractFilename(folderPath)
     let safefolderName = folderName.replace("/", "_").replace("\\", "_")
-    let indexPath = getHomeDir() / ".fraggy" / "folders" / &"{safefolderName}.flat"
+    let indexPath = getHomeDir() / ".regen" / "folders" / &"{safefolderName}.flat"
     createDir(parentDir(indexPath))
     
-    var index: FraggyIndex
+    var index: RegenIndex
     
     if fileExists(indexPath):
       # Load existing index and update incrementally
       try:
         let existingIndex = readIndexFromFile(indexPath)
-        if existingIndex.kind == fraggy_folder:
-          index = updateFraggyIndex(existingIndex, folderPath, config.extensions)
+        if existingIndex.kind == regen_folder:
+          index = updateRegenIndex(existingIndex, folderPath, config.extensions)
         else:
           warn "Existing index is wrong type, rebuilding..."
-          let folder = newFraggyFolder(folderPath, config.extensions)
-          index = FraggyIndex(version: ConfigVersion, kind: fraggy_folder, folder: folder)
+          let folder = newRegenFolder(folderPath, config.extensions)
+          index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
       except:
         warn "Could not load existing index, rebuilding..."
-        let folder = newFraggyFolder(folderPath, config.extensions)
-        index = FraggyIndex(version: ConfigVersion, kind: fraggy_folder, folder: folder)
+        let folder = newRegenFolder(folderPath, config.extensions)
+        index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
     else:
       # Create new index
       info "Creating new index..."
-      let folder = newFraggyFolder(folderPath, config.extensions)
-      index = FraggyIndex(version: ConfigVersion, kind: fraggy_folder, folder: folder)
+      let folder = newRegenFolder(folderPath, config.extensions)
+      index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
     
     writeIndexToFile(index, indexPath)
     info &"Saved index to: {indexPath}"
@@ -358,30 +358,30 @@ proc indexAll*() =
     
     # Generate filename using just repo name (no commit hash)
     let repoName = extractFilename(repoPath)
-    let indexPath = getHomeDir() / ".fraggy" / "repos" / &"{repoName}.flat"
+    let indexPath = getHomeDir() / ".regen" / "repos" / &"{repoName}.flat"
     createDir(parentDir(indexPath))
     
-    var index: FraggyIndex
+    var index: RegenIndex
     
     if fileExists(indexPath):
       # Load existing index and update incrementally
       try:
         let existingIndex = readIndexFromFile(indexPath)
-        if existingIndex.kind == fraggy_git_repo:
-          index = updateFraggyIndex(existingIndex, repoPath, config.extensions)
+        if existingIndex.kind == regen_git_repo:
+          index = updateRegenIndex(existingIndex, repoPath, config.extensions)
         else:
           warn "Existing index is wrong type, rebuilding..."
-          let repo = newFraggyGitRepo(repoPath, config.extensions)
-          index = FraggyIndex(version: ConfigVersion, kind: fraggy_git_repo, repo: repo)
+          let repo = newRegenGitRepo(repoPath, config.extensions)
+          index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
       except:
         warn "Could not load existing index, rebuilding..."
-        let repo = newFraggyGitRepo(repoPath, config.extensions)
-        index = FraggyIndex(version: ConfigVersion, kind: fraggy_git_repo, repo: repo)
+        let repo = newRegenGitRepo(repoPath, config.extensions)
+        index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
     else:
       # Create new index
       info "Creating new index..."
-      let repo = newFraggyGitRepo(repoPath, config.extensions)
-      index = FraggyIndex(version: ConfigVersion, kind: fraggy_git_repo, repo: repo)
+      let repo = newRegenGitRepo(repoPath, config.extensions)
+      index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
     
     writeIndexToFile(index, indexPath)
     info &"Saved index to: {indexPath}"

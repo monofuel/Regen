@@ -1,6 +1,6 @@
 import
   std/[os, parseopt, strformat],
-  ../src/fraggy
+  ../src/regen
 
 # Parse command line arguments
 var updateGold = false
@@ -29,18 +29,18 @@ proc validateGitCommitHash(hash: string): bool =
       return false
   return true
 
-proc createSelfIndex(): FraggyIndex =
-  ## Create a FraggyIndex of the Fraggy repository itself.
-  let projectPath = getCurrentDir()  # We're already in the Fraggy directory
-  echo "Creating self-index of Fraggy repository..."
-  result = newFraggyIndex(fraggy_git_repo, projectPath, @WhitelistedExtensions)
+proc createSelfIndex(): RegenIndex =
+  ## Create a RegenIndex of the Regen repository itself.
+  let projectPath = getCurrentDir()  # We're already in the Regen directory
+  echo "Creating self-index of Regen repository..."
+  result = newRegenIndex(regen_git_repo, projectPath, @WhitelistedExtensions)
 
 proc main() =
   ## Main test function that creates the index and compares with gold master.
   let index = createSelfIndex()
   
   # Validate that we have a proper git commit hash
-  if index.kind == fraggy_git_repo:
+  if index.kind == regen_git_repo:
     let commitHash = index.repo.latestCommitHash
     if not validateGitCommitHash(commitHash):
       echo &"✗ Invalid git commit hash: '{commitHash}'"

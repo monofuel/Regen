@@ -1,4 +1,4 @@
-# Fraggy 🗃️
+# Regen 🗃️
 
 ![why wouldn't you want a miqo'te reading all your documents and indexing everything](static/ComfyUI_00126_.png)
 
@@ -15,7 +15,7 @@
 ## 📋 TODO
 
 - [ ] support query - document embeddings in addition to similarity search
-- [ ] 🌐 OpenAPI server interface
+- [x] 🌐 OpenAPI server interface
 - [ ] 🔌 MCP (Model Context Protocol) server support
 
 ## 🛠️ Usage
@@ -34,10 +34,10 @@ Benchmarks cover file discovery, SHA-256 hashing, fragment creation, embedding g
 
 ## 📖 Key Functions
 
-### `newFraggyIndex(indexType, path, extensions)`
+### `newRegenIndex(indexType, path, extensions)`
 Creates a new index for a git repo or folder:
 ```nim
-let index = newFraggyIndex(fraggy_git_repo, "/path/to/repo", @[".nim", ".md"])
+let index = newRegenIndex(regen_git_repo, "/path/to/repo", @[".nim", ".md"])
 ```
 
 ### `findSimilarFragments(index, queryText, maxResults)`

@@ -1,6 +1,6 @@
 import
   std/[strformat, os, parseopt],
-  ../src/fraggy
+  ../src/regen
 
 # Parse command line arguments
 var updateGold = false
@@ -15,9 +15,9 @@ while true:
   of cmdArgument:
     discard
 
-proc createTestData(): FraggyIndex =
+proc createTestData(): RegenIndex =
   ## Create consistent test data for serialization testing.
-  let fragment1 = FraggyFragment(
+  let fragment1 = RegenFragment(
     startLine: 1,
     endLine: 10,
     embedding: generateEmbedding("def calculate_sum(a, b):\n    return a + b"),
@@ -28,7 +28,7 @@ proc createTestData(): FraggyIndex =
     hash: "frag1hash"
   )
   
-  let fragment2 = FraggyFragment(
+  let fragment2 = RegenFragment(
     startLine: 11,
     endLine: 20,
     embedding: generateEmbedding("# This function calculates the sum of two numbers"),
@@ -39,7 +39,7 @@ proc createTestData(): FraggyIndex =
     hash: "frag2hash"
   )
   
-  let file1 = FraggyFile(
+  let file1 = RegenFile(
     path: "/src/main.nim",
     filename: "main.nim",
     hash: "file1hash",
@@ -48,7 +48,7 @@ proc createTestData(): FraggyIndex =
     fragments: @[fragment1, fragment2]
   )
   
-  let file2 = FraggyFile(
+  let file2 = RegenFile(
     path: "/src/utils.nim",
     filename: "utils.nim",
     hash: "file2hash",
@@ -57,22 +57,22 @@ proc createTestData(): FraggyIndex =
     fragments: @[]  # Empty file
   )
   
-  let testRepo = FraggyGitRepo(
+  let testRepo = RegenGitRepo(
     name: "test-repo",
     latestCommitHash: "abc123def456",
     isDirty: false,
     files: @[file1, file2]
   )
   
-  result = FraggyIndex(
+  result = RegenIndex(
     version: "0.1.0",
-    kind: fraggy_git_repo,
+    kind: regen_git_repo,
     repo: testRepo
   )
 
 const
-  tmpFile = "tests/tmp/test_fraggy_gold.flat"
-  goldFile = "tests/gold/test_fraggy_gold.flat"
+  tmpFile = "tests/tmp/test_regen_gold.flat"
+  goldFile = "tests/gold/test_regen_gold.flat"
 
 # Create test data and serialize to tmp file
 let testIndex = createTestData()
@@ -112,7 +112,7 @@ let
 removeFile(tmpFile)
 
 if tmpContent == goldContent:
-  echo "✅ Test passed: Fraggy binary serialization matches gold file"
+  echo "✅ Test passed: Regen binary serialization matches gold file"
   
   # Also verify we can deserialize both files successfully
   let deserializedFromGold = readIndexFromFile(goldFile)
@@ -133,7 +133,7 @@ if tmpContent == goldContent:
     echo "❌ Deserialization verification: FAIL"
     quit(1)
 else:
-  echo "❌ Test failed: Fraggy binary serialization differs from gold file"
+  echo "❌ Test failed: Regen binary serialization differs from gold file"
   echo &"Gold file size: {goldContent.len} bytes"
   echo &"Test file size: {tmpContent.len} bytes"
   

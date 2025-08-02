@@ -1,4 +1,4 @@
-## Fraggy CLI - Document fragment and AI indexing tool
+## Regen CLI - Document fragment and AI indexing tool
 
 import
   std/[strutils, strformat, os, algorithm],
@@ -15,7 +15,7 @@ export types, configs, index, search, openapi
 
 # nomic-embed-text is used for similarity search with local embeddings and ollama.
 
-# the index flatfiles will be saved at ~/.fraggy/{git_owner}/{git_repo}/{embedding_model_name}.flat
+# the index flatfiles will be saved at ~/.regen/{git_owner}/{git_repo}/{embedding_model_name}.flat
 # multiple embedding models may be used for a single repo, and kept in separate files.
 
 ## File Fragments may or may not overlap
@@ -24,8 +24,8 @@ export types, configs, index, search, openapi
 ## an even more sophisticated fragmenter could have both large and small overlapping fragments to help cover a broad range of embeddings.
 
 proc printHelp*() =
-  ## Print help information for fraggy commands.
-  info "Usage: fraggy <command> [options]"
+  ## Print help information for regen commands.
+  info "Usage: regen <command> [options]"
   info ""
   info "Configuration Commands:"
   info "  --add-folder-index <path>   Add folder to tracking config"
@@ -49,7 +49,7 @@ proc printHelp*() =
   info "Other:"
   info "  help                        Show this help message"
 
-proc extractFragmentContent*(file: FraggyFile, fragment: FraggyFragment): seq[string] =
+proc extractFragmentContent*(file: RegenFile, fragment: RegenFragment): seq[string] =
   ## Extract the actual text content from a file fragment.
   result = @[]
   
@@ -70,8 +70,8 @@ proc performRipgrepSearch*(args: seq[string]) =
   ## Perform a ripgrep search from command line arguments.
   if args.len < 2:
     error "ripgrep search requires a search pattern"
-    info "Usage: fraggy -r <pattern> [--case-insensitive] [--max-results=N]"
-    info "   or: fraggy --ripgrep-search <pattern> [options]"
+    info "Usage: regen -r <pattern> [--case-insensitive] [--max-results=N]"
+    info "   or: regen --ripgrep-search <pattern> [options]"
     return
   
   let pattern = args[1]
@@ -128,8 +128,8 @@ proc performEmbeddingSearch*(args: seq[string]) =
   ## Perform an embedding search from command line arguments.
   if args.len < 2:
     error "embedding search requires a search query"
-    info "Usage: fraggy -e <query> [--max-results=N] [--model=MODEL]"
-    info "   or: fraggy --embedding-search <query> [options]"
+    info "Usage: regen -e <query> [--max-results=N] [--model=MODEL]"
+    info "   or: regen --embedding-search <query> [options]"
     return
   
   let query = args[1]
@@ -210,7 +210,7 @@ proc startApiServer*(args: seq[string]) =
   if args.len > 2:
     address = args[2]
   
-  info &"Starting Fraggy OpenAPI server on {address}:{port}"
+  info &"Starting Regen OpenAPI server on {address}:{port}"
   startServer(port, address)
 
 proc main() =

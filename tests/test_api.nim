@@ -1,8 +1,8 @@
 import
   std/[unittest, httpclient, json, strutils, os, osproc],
-  openapi, fraggy
+  openapi, regen
 
-## Test suite for the Fraggy Search API endpoints.
+## Test suite for the Regen Search API endpoints.
 ## Validates all HTTP endpoints, error handling, and response formats.
 ## Automatically starts and stops the server for testing.
 
@@ -11,7 +11,7 @@ const
   TestHost = "localhost"
   TestIndexName = "tests/tmp/test_index.flat"
 
-suite "Fraggy Search API Tests":
+suite "Regen Search API Tests":
   var 
     client: HttpClient
     baseUrl: string
@@ -20,7 +20,7 @@ suite "Fraggy Search API Tests":
 
   proc startTestServer(): Process =
     ## Start the API server process for testing.
-    let process = startProcess("nim", args = @["c", "-r", "src/fraggy.nim", "--server", $TestPort], 
+    let process = startProcess("nim", args = @["c", "-r", "src/regen.nim", "--server", $TestPort], 
                               options = {poUsePath, poStdErrToStdOut})
     return process
 
@@ -55,19 +55,19 @@ suite "Fraggy Search API Tests":
     testIndexPath = TestIndexName
     
     # Create test files in memory for the index
-    let testRepo = FraggyGitRepo(
+    let testRepo = RegenGitRepo(
       name: "test_repo",
       latestCommitHash: "abc123",
       isDirty: false,
       files: @[
-        FraggyFile(
+        RegenFile(
           path: "test.nim",
           filename: "test.nim", 
           hash: "hash123",
           creationTime: 0.0,
           lastModified: 0.0,
           fragments: @[
-            FraggyFragment(
+            RegenFragment(
               startLine: 1,
               endLine: 10,
               embedding: @[0.1'f32, 0.2, 0.3, 0.4, 0.5],
@@ -82,9 +82,9 @@ suite "Fraggy Search API Tests":
       ]
     )
     
-    let testIndex = FraggyIndex(
+    let testIndex = RegenIndex(
       version: "0.1.0",
-      kind: fraggy_git_repo,
+      kind: regen_git_repo,
       repo: testRepo
     )
     
@@ -115,7 +115,7 @@ suite "Fraggy Search API Tests":
     check "application/json" in response.headers.getOrDefault("Content-Type")
     
     let jsonResponse = parseJson(response.body)
-    check jsonResponse["message"].getStr() == "Fraggy Search API"
+    check jsonResponse["message"].getStr() == "Regen Search API"
     check jsonResponse["version"].getStr() == "1.0.0"
     check jsonResponse["endpoints"].kind == JArray
     check jsonResponse["endpoints"].len == 3
@@ -129,7 +129,7 @@ suite "Fraggy Search API Tests":
     
     let spec = parseJson(response.body)
     check spec["openapi"].getStr() == "3.0.3"
-    check spec["info"]["title"].getStr() == "Fraggy Search API"
+    check spec["info"]["title"].getStr() == "Regen Search API"
     check spec["info"]["version"].getStr() == "1.0.0"
     check spec.hasKey("paths")
     check spec["paths"].hasKey("/search/ripgrep")

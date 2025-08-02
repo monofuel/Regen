@@ -2,7 +2,7 @@ import
   std/[os, strformat, threadpool],
   benchy,
   openai_leap,
-  ../src/fraggy
+  ../src/regen
 
 const
   WhitelistedExtensions = [".nim", ".md"]
@@ -69,7 +69,7 @@ proc benchmarkFragmentCreation() =
   let content = readFile(testFile)
   
   timeIt "Fragment Creation":
-    let fragment = newFraggyFragment(content, testFile)
+    let fragment = newRegenFragment(content, testFile)
     keep fragment.hash
 
 proc benchmarkFileIndexing() =
@@ -81,13 +81,13 @@ proc benchmarkFileIndexing() =
     return
   
   timeIt "Single File Index":
-    let fraggyFile = newFraggyFile(testFile)
-    keep fraggyFile.hash
+    let regenFile = newRegenFile(testFile)
+    keep regenFile.hash
 
 proc benchmarkFullIndexing() =
   ## Benchmark full repository indexing.
   timeIt "Full Repo Index", 1:  # Only run once due to embedding generation
-    let index = newFraggyIndex(fraggy_git_repo, getCurrentDir(), @WhitelistedExtensions)
+    let index = newRegenIndex(regen_git_repo, getCurrentDir(), @WhitelistedExtensions)
     keep index.repo.files.len
 
 proc benchmarkParallelEmbeddings() =
@@ -159,21 +159,21 @@ proc benchmarkSimilaritySearch() =
     return
   
   # Create test index with actual content
-  var fraggyFiles: seq[FraggyFile] = @[]
+  var regenFiles: seq[RegenFile] = @[]
   for filePath in testFiles:
-    let fraggyFile = newFraggyFile(filePath)
-    fraggyFiles.add(fraggyFile)
+    let regenFile = newRegenFile(filePath)
+    regenFiles.add(regenFile)
   
-  let testRepo = FraggyGitRepo(
+  let testRepo = RegenGitRepo(
     name: "benchmark-repo",
     latestCommitHash: "test123",
     isDirty: false,
-    files: fraggyFiles
+    files: regenFiles
   )
   
-  let testIndex = FraggyIndex(
+  let testIndex = RegenIndex(
     version: "0.1.0",
-    kind: fraggy_git_repo,
+    kind: regen_git_repo,
     repo: testRepo
   )
   
@@ -208,7 +208,7 @@ proc benchmarkSimilaritySearch() =
 
 
 proc main() =
-  echo &"Benchmarking Fraggy indexing performance"
+  echo &"Benchmarking Regen indexing performance"
   echo &"Repository: {getCurrentDir()}"
   
   let files = findProjectFiles(getCurrentDir(), @WhitelistedExtensions)

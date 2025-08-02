@@ -1,4 +1,4 @@
-## OpenAPI server for Fraggy search functionality
+## OpenAPI server for Regen search functionality
 
 import
   std/[strutils, os, json, sequtils, strformat, algorithm, options],
@@ -57,8 +57,8 @@ type
     error*: string
     code*: int
 
-# Helper function to extract fragment content (similar to fraggy.nim)
-proc extractFragmentContent*(file: FraggyFile, fragment: FraggyFragment): seq[LineContent] =
+# Helper function to extract fragment content (similar to regen.nim)
+proc extractFragmentContent*(file: RegenFile, fragment: RegenFragment): seq[LineContent] =
   ## Extract the actual text content from a file fragment with line numbers.
   result = @[]
   
@@ -79,7 +79,7 @@ proc extractFragmentContent*(file: FraggyFile, fragment: FraggyFragment): seq[Li
       content: lines[i]
     ))
 
-# Helper functions for converting fraggy types to API types
+# Helper functions for converting regen types to API types
 proc toRipgrepMatch*(ripgrepResult: RipgrepResult): RipgrepMatch =
   RipgrepMatch(
     path: ripgrepResult.file.filename,
@@ -89,14 +89,14 @@ proc toRipgrepMatch*(ripgrepResult: RipgrepResult): RipgrepMatch =
     match_end: ripgrepResult.matchEnd
   )
 
-proc toFileInfo*(fraggyFile: FraggyFile): FileInfo =
+proc toFileInfo*(regenFile: RegenFile): FileInfo =
   FileInfo(
-    path: fraggyFile.path,
-    filename: fraggyFile.filename,
-    hash: fraggyFile.hash
+    path: regenFile.path,
+    filename: regenFile.filename,
+    hash: regenFile.hash
   )
 
-proc toFragmentInfo*(fragment: FraggyFragment): FragmentInfo =
+proc toFragmentInfo*(fragment: RegenFragment): FragmentInfo =
   FragmentInfo(
     startLine: fragment.startLine,
     endLine: fragment.endLine,
@@ -153,7 +153,7 @@ proc handleRipgrepSearch*(request: Request) =
     let indexPaths = findAllIndexes()
     if indexPaths.len == 0:
       request.respond(400, headers, body = ErrorResponse(
-        error: "No indexes found. Run 'fraggy --index-all' first to create indexes.",
+        error: "No indexes found. Run 'regen --index-all' first to create indexes.",
         code: 400
       ).toJson())
       return
@@ -217,7 +217,7 @@ proc handleEmbeddingSearch*(request: Request) =
     let indexPaths = findAllIndexes()
     if indexPaths.len == 0:
       request.respond(400, headers, body = ErrorResponse(
-        error: "No indexes found. Run 'fraggy --index-all' first to create indexes.",
+        error: "No indexes found. Run 'regen --index-all' first to create indexes.",
         code: 400
       ).toJson())
       return
@@ -262,7 +262,7 @@ proc buildBaseSpec*(): JsonNode =
   result = %*{
     "openapi": "3.0.3",
     "info": {
-      "title": "Fraggy Search API",
+      "title": "Regen Search API",
       "description": "API for searching code using ripgrep and semantic embeddings. Searches across all configured folders and git repositories automatically.",
       "version": "1.0.0"
     },
@@ -582,7 +582,7 @@ proc router*(request: Request) =
   of "/":
     # Simple health check / welcome message
     let welcomeMsg = %*{
-      "message": "Fraggy Search API",
+      "message": "Regen Search API",
       "version": "1.0.0",
       "endpoints": [
         {"path": "/search/ripgrep", "method": "POST"},
@@ -600,7 +600,7 @@ proc router*(request: Request) =
 
 # Server startup
 proc startServer*(port: int = 8080, address: string = "localhost") =
-  info &"Starting Fraggy Search API server on {address}:{port}"
+  info &"Starting Regen Search API server on {address}:{port}"
   info &"OpenAPI spec available at: http://{address}:{port}/openapi.json"
   
   let server = newServer(router)

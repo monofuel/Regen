@@ -1,12 +1,12 @@
-## Shared types for Fraggy indexing and search functionality
+## Shared types for Regen indexing and search functionality
 
 type
-  FraggyIndexType* = enum
-    fraggy_git_repo
-    fraggy_folder
+  RegenIndexType* = enum
+    regen_git_repo
+    regen_folder
 
-  FraggyConfig* = object
-    ## Configuration for fraggy indexing
+  RegenConfig* = object
+    ## Configuration for regen indexing
     version*: string
     folders*: seq[string]  ## List of folder paths to index
     gitRepos*: seq[string] ## List of git repository paths to index
@@ -14,7 +14,7 @@ type
     embeddingModel*: string ## Model to use for embeddings
     apiKey*: string ## Bearer token for API authentication
 
-  FraggyFragment* = object
+  RegenFragment* = object
     ## A specific chunk of the file
     startLine*: int
     endLine*: int
@@ -25,45 +25,45 @@ type
     contentScore*: int
     hash*: string
 
-  FraggyFile* = object
+  RegenFile* = object
     ## A specific file that has been indexed.
     path*: string
     filename*: string
     hash*: string
     creationTime*: float
     lastModified*: float
-    fragments*: seq[FraggyFragment]
+    fragments*: seq[RegenFragment]
 
-  FraggyGitRepo* = object
+  RegenGitRepo* = object
     ## indexing a git repo for a specific commit
     name*: string
     latestCommitHash*: string
     isDirty*: bool # does data match the latest commit?
-    files*: seq[FraggyFile]
+    files*: seq[RegenFile]
 
-  FraggyFolder* = object
+  RegenFolder* = object
     ## indexing a specific folder on the local disk
     path*: string
-    files*: seq[FraggyFile]
+    files*: seq[RegenFile]
 
-  FraggyIndex* = object
-    ## a top level wrapper for a fraggy index.
+  RegenIndex* = object
+    ## a top level wrapper for a regen index.
     version*: string
-    case kind*: FraggyIndexType
-    of fraggy_git_repo:
-      repo*: FraggyGitRepo
-    of fraggy_folder:
-      folder*: FraggyFolder
+    case kind*: RegenIndexType
+    of regen_git_repo:
+      repo*: RegenGitRepo
+    of regen_folder:
+      folder*: RegenFolder
 
   SimilarityResult* = object
     ## A result from similarity search
-    fragment*: FraggyFragment
-    file*: FraggyFile
+    fragment*: RegenFragment
+    file*: RegenFile
     similarity*: float32
 
   RipgrepResult* = object
     ## A result from ripgrep search
-    file*: FraggyFile
+    file*: RegenFile
     lineNumber*: int
     lineContent*: string
     matchStart*: int

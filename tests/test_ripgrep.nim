@@ -1,12 +1,12 @@
 import unittest, strutils
-import ../src/fraggy
+import ../src/regen
 
 suite "Ripgrep Search Tests":
-  var index: FraggyIndex
+  var index: RegenIndex
   
   setup:
     # Create an index of the test files
-    index = newFraggyIndex(fraggy_folder, "tests/testfiles", @[".nim", ".txt"])
+    index = newRegenIndex(regen_folder, "tests/testfiles", @[".nim", ".txt"])
   
   test "Basic pattern search":
     let results = ripgrepSearch(index, "hello")

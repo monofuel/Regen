@@ -1,4 +1,4 @@
-## Configuration management for Fraggy
+## Configuration management for Regen
 
 import
   std/[strutils, strformat, os, random],
@@ -17,14 +17,14 @@ proc generateApiKey*(): string =
     result.add(chars[rand(chars.len - 1)])
 
 proc getConfigPath*(): string =
-  ## Get the path to the fraggy config file.
-  let configDir = getHomeDir() / ".fraggy"
+  ## Get the path to the regen config file.
+  let configDir = getHomeDir() / ".regen"
   if not dirExists(configDir):
     createDir(configDir)
   result = configDir / "config.json"
 
-proc saveConfig*(config: FraggyConfig) =
-  ## Save configuration to ~/.fraggy/config.json.
+proc saveConfig*(config: RegenConfig) =
+  ## Save configuration to ~/.regen/config.json.
   let configPath = getConfigPath()
   try:
     let configData = toJson(config)
@@ -33,13 +33,13 @@ proc saveConfig*(config: FraggyConfig) =
   except:
     error &"Error saving config to {configPath}: {getCurrentExceptionMsg()}"
 
-proc loadConfig*(): FraggyConfig =
-  ## Load configuration from ~/.fraggy/config.json.
+proc loadConfig*(): RegenConfig =
+  ## Load configuration from ~/.regen/config.json.
   let configPath = getConfigPath()
   
   if not fileExists(configPath):
     # Return default config if file doesn't exist
-    result = FraggyConfig(
+    result = RegenConfig(
       version: ConfigVersion,
       folders: @[],
       gitRepos: @[],
@@ -51,7 +51,7 @@ proc loadConfig*(): FraggyConfig =
   
   try:
     let configData = readFile(configPath)
-    result = fromJson(configData, FraggyConfig)
+    result = fromJson(configData, RegenConfig)
     
     # Handle backward compatibility - generate API key if missing
     if result.apiKey.len == 0:
@@ -62,7 +62,7 @@ proc loadConfig*(): FraggyConfig =
   except:
     error &"Error loading config from {configPath}: {getCurrentExceptionMsg()}"
     # Return default config on error
-    result = FraggyConfig(
+    result = RegenConfig(
       version: ConfigVersion,
       folders: @[],
       gitRepos: @[],
@@ -113,29 +113,29 @@ proc findAllIndexes*(): seq[string] =
   ## Find all available index files from configured folders and repos.
   result = @[]
   
-  let fraggyDir = getHomeDir() / ".fraggy"
+  let regenDir = getHomeDir() / ".regen"
   
   # Find folder indexes
-  let foldersDir = fraggyDir / "folders"
+  let foldersDir = regenDir / "folders"
   if dirExists(foldersDir):
     for file in walkDir(foldersDir):
       if file.kind == pcFile and file.path.endsWith(".flat"):
         result.add(file.path)
   
   # Find repo indexes
-  let reposDir = fraggyDir / "repos"
+  let reposDir = regenDir / "repos"
   if dirExists(reposDir):
     for file in walkDir(reposDir):
       if file.kind == pcFile and file.path.endsWith(".flat"):
         result.add(file.path)
   
   if result.len == 0:
-    warn "No indexes found. Run 'fraggy --index-all' first to create indexes."
+    warn "No indexes found. Run 'regen --index-all' first to create indexes."
 
 proc showConfig*() =
   ## Display the current configuration.
   let config = loadConfig()
-  info "Fraggy Configuration:"
+  info "Regen Configuration:"
   info &"  Version: {config.version}"
   info &"  Embedding Model: {config.embeddingModel}"
   info &"  API Key: {config.apiKey[0..7]}...{config.apiKey[^8..^1]} (Bearer token for API)"

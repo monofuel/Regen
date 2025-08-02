@@ -1,11 +1,11 @@
-# Fraggy
+# Regen
 
-- fraggy is a document fragment and AI indexing tool
+- regen is a document fragment and AI indexing tool
 - there is a `flake.nix` for setting up the dev environment.
 
 ## Organization
 
-- src/fraggy.nim handles the CLI interface
+- src/regen.nim handles the CLI interface
 - src/index.nim is for embeddings and building the indexes
 - src/configs.nim is for the configuration
 - src/openapi.nim is for the swagger openapi API
@@ -58,7 +58,7 @@ This approach ensures full stack traces in CI environments and makes debugging s
 - make sure to run unit tests! they should always pass.
 
 - `nimble benchmark` can be used to run benchmark tests.
-- benchmark is at ./tests/bench_fraggy.nim
+- benchmark is at ./tests/bench_regen.nim
 
 - do not `echo` in tests, they should not log anything when successful
 

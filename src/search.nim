@@ -1,4 +1,4 @@
-## Search functionality for Fraggy - ripgrep and embedding search
+## Search functionality for Regen - ripgrep and embedding search
 
 import
   std/[strutils, os, osproc, json, algorithm, math],
@@ -45,14 +45,14 @@ proc cosineSimilarity*(a, b: seq[float32]): float32 =
   
   result = dotProduct / magnitude
 
-proc findSimilarFragments*(index: FraggyIndex, queryText: string, maxResults: int = 10, model: string = SimilarityEmbeddingModel): seq[SimilarityResult] =
+proc findSimilarFragments*(index: RegenIndex, queryText: string, maxResults: int = 10, model: string = SimilarityEmbeddingModel): seq[SimilarityResult] =
   ## Find the most similar fragments to the query text.
   let queryEmbedding = generateEmbedding(queryText, model)
   var results: seq[SimilarityResult] = @[]
   
   # Collect all fragments with their similarity scores
   case index.kind
-  of fraggy_git_repo:
+  of regen_git_repo:
     for file in index.repo.files:
       for fragment in file.fragments:
         if fragment.model == model:
@@ -62,7 +62,7 @@ proc findSimilarFragments*(index: FraggyIndex, queryText: string, maxResults: in
             file: file,
             similarity: similarity
           ))
-  of fraggy_folder:
+  of regen_folder:
     for file in index.folder.files:
       for fragment in file.fragments:
         if fragment.model == model:
@@ -85,14 +85,14 @@ proc findSimilarFragments*(index: FraggyIndex, queryText: string, maxResults: in
   else:
     result = results
 
-proc ripgrepSearch*(index: FraggyIndex, pattern: string, caseSensitive: bool = true, maxResults: int = 100): seq[RipgrepResult] =
+proc ripgrepSearch*(index: RegenIndex, pattern: string, caseSensitive: bool = true, maxResults: int = 100): seq[RipgrepResult] =
   ## Search through all files in the index using actual ripgrep (rg) command.
   ## Returns matching lines with file info and line numbers.
   var results: seq[RipgrepResult] = @[]
   
   # Get the search directory based on index type
   let searchPath = case index.kind
-    of fraggy_git_repo:
+    of regen_git_repo:
       # Find the common root directory of all files (should be the repo root)
       if index.repo.files.len > 0:
         let firstPath = index.repo.files[0].path
@@ -103,7 +103,7 @@ proc ripgrepSearch*(index: FraggyIndex, pattern: string, caseSensitive: bool = t
         commonRoot
       else: 
         "."
-    of fraggy_folder:
+    of regen_folder:
       index.folder.path
   
   # Build ripgrep command (don't limit per file, we'll limit total results)
@@ -141,21 +141,21 @@ proc ripgrepSearch*(index: FraggyIndex, pattern: string, caseSensitive: bool = t
           let lineText = data["lines"]["text"].getStr().strip()  # Strip newlines
           let submatches = data["submatches"]
           
-          # Find the corresponding FraggyFile
-          var fraggyFile: FraggyFile
+          # Find the corresponding RegenFile
+          var regenFile: RegenFile
           var fileFound = false
           
           case index.kind
-          of fraggy_git_repo:
+          of regen_git_repo:
             for file in index.repo.files:
               if file.path == filePath or file.path.endsWith(filePath):
-                fraggyFile = file
+                regenFile = file
                 fileFound = true
                 break
-          of fraggy_folder:
+          of regen_folder:
             for file in index.folder.files:
               if file.path == filePath or file.path.endsWith(filePath):
-                fraggyFile = file
+                regenFile = file
                 fileFound = true
                 break
           
@@ -165,7 +165,7 @@ proc ripgrepSearch*(index: FraggyIndex, pattern: string, caseSensitive: bool = t
               if results.len >= maxResults:
                 break
               results.add(RipgrepResult(
-                file: fraggyFile,
+                file: regenFile,
                 lineNumber: lineNum,
                 lineContent: lineText,
                 matchStart: submatch["start"].getInt(),

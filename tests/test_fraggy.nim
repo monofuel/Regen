@@ -1,14 +1,14 @@
 import
   unittest,
-  ../src/fraggy
+  ../src/regen
 
 from std/os import fileExists, removeFile
 
-suite "FraggyIndex serialization tests":
+suite "RegenIndex serialization tests":
 
-  test "can serialize and deserialize FraggyIndex with git repo":
+  test "can serialize and deserialize RegenIndex with git repo":
     # Create dummy fragments with real embeddings
-    let fragment1 = FraggyFragment(
+    let fragment1 = RegenFragment(
       startLine: 1,
       endLine: 10,
       embedding: generateEmbedding("def calculate_sum(a, b):\n    return a + b"),
@@ -19,7 +19,7 @@ suite "FraggyIndex serialization tests":
       hash: "frag1hash"
     )
     
-    let fragment2 = FraggyFragment(
+    let fragment2 = RegenFragment(
       startLine: 11,
       endLine: 20,
       embedding: generateEmbedding("# This function calculates the sum of two numbers"),
@@ -31,7 +31,7 @@ suite "FraggyIndex serialization tests":
     )
     
     # Create dummy files
-    let file1 = FraggyFile(
+    let file1 = RegenFile(
       path: "/src/main.nim",
       filename: "main.nim",
       hash: "file1hash",
@@ -40,7 +40,7 @@ suite "FraggyIndex serialization tests":
       fragments: @[fragment1, fragment2]
     )
     
-    let file2 = FraggyFile(
+    let file2 = RegenFile(
       path: "/src/utils.nim",
       filename: "utils.nim",
       hash: "file2hash",
@@ -50,7 +50,7 @@ suite "FraggyIndex serialization tests":
     )
     
     # Create test repo
-    let testRepo = FraggyGitRepo(
+    let testRepo = RegenGitRepo(
       name: "test-repo",
       latestCommitHash: "abc123def456",
       isDirty: false,
@@ -58,9 +58,9 @@ suite "FraggyIndex serialization tests":
     )
     
     # Create test index
-    let testIndex = FraggyIndex(
+    let testIndex = RegenIndex(
       version: "0.1.0",
-      kind: fraggy_git_repo,
+      kind: regen_git_repo,
       repo: testRepo
     )
     
@@ -107,16 +107,16 @@ suite "FraggyIndex serialization tests":
     # Clean up test file
     removeFile(testFile)
 
-  test "can serialize and deserialize FraggyIndex with folder":
+  test "can serialize and deserialize RegenIndex with folder":
     # Create a simple folder index with real embedding
-    let file1 = FraggyFile(
+    let file1 = RegenFile(
       path: "/data/docs/readme.md",
       filename: "readme.md",
       hash: "readmehash",
       creationTime: 1640995400.0,
       lastModified: 1640995400.0,
       fragments: @[
-        FraggyFragment(
+        RegenFragment(
           startLine: 1,
           endLine: 5,
           embedding: generateEmbedding("# Project README\n\nThis is a sample project documentation."),
@@ -129,14 +129,14 @@ suite "FraggyIndex serialization tests":
       ]
     )
     
-    let testFolder = FraggyFolder(
+    let testFolder = RegenFolder(
       path: "/data/docs",
       files: @[file1]
     )
     
-    let testIndex = FraggyIndex(
+    let testIndex = RegenIndex(
       version: "0.1.0",
-      kind: fraggy_folder,
+      kind: regen_folder,
       folder: testFolder
     )
     
@@ -193,7 +193,7 @@ suite "Similarity search tests":
 
   test "similarity search with git repo index":
     # Create test fragments with known embeddings
-    let fragment1 = FraggyFragment(
+    let fragment1 = RegenFragment(
       startLine: 1,
       endLine: 10,
       embedding: generateEmbedding("function to calculate sum of two numbers"),
@@ -204,7 +204,7 @@ suite "Similarity search tests":
       hash: "frag1hash"
     )
     
-    let fragment2 = FraggyFragment(
+    let fragment2 = RegenFragment(
       startLine: 11,
       endLine: 20,
       embedding: generateEmbedding("function to calculate product of two numbers"),
@@ -215,7 +215,7 @@ suite "Similarity search tests":
       hash: "frag2hash"
     )
     
-    let fragment3 = FraggyFragment(
+    let fragment3 = RegenFragment(
       startLine: 21,
       endLine: 30,
       embedding: generateEmbedding("user interface component for displaying buttons"),
@@ -227,7 +227,7 @@ suite "Similarity search tests":
     )
     
     # Create test file
-    let testFile = FraggyFile(
+    let testFile = RegenFile(
       path: "/src/math.nim",
       filename: "math.nim",
       hash: "mathfilehash",
@@ -237,7 +237,7 @@ suite "Similarity search tests":
     )
     
     # Create test repo
-    let testRepo = FraggyGitRepo(
+    let testRepo = RegenGitRepo(
       name: "test-repo",
       latestCommitHash: "abc123def456",
       isDirty: false,
@@ -245,9 +245,9 @@ suite "Similarity search tests":
     )
     
     # Create test index
-    let testIndex = FraggyIndex(
+    let testIndex = RegenIndex(
       version: "0.1.0",
-      kind: fraggy_git_repo,
+      kind: regen_git_repo,
       repo: testRepo
     )
     
@@ -273,7 +273,7 @@ suite "Similarity search tests":
 
   test "similarity search with folder index":
     # Create a test fragment
-    let fragment = FraggyFragment(
+    let fragment = RegenFragment(
       startLine: 1,
       endLine: 5,
       embedding: generateEmbedding("project documentation and setup instructions"),
@@ -284,7 +284,7 @@ suite "Similarity search tests":
       hash: "readme_frag_hash"
     )
     
-    let testFile = FraggyFile(
+    let testFile = RegenFile(
       path: "/docs/readme.md",
       filename: "readme.md",
       hash: "readmehash",
@@ -293,14 +293,14 @@ suite "Similarity search tests":
       fragments: @[fragment]
     )
     
-    let testFolder = FraggyFolder(
+    let testFolder = RegenFolder(
       path: "/docs",
       files: @[testFile]
     )
     
-    let testIndex = FraggyIndex(
+    let testIndex = RegenIndex(
       version: "0.1.0",
-      kind: fraggy_folder,
+      kind: regen_folder,
       folder: testFolder
     )
     
