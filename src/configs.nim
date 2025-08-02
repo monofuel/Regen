@@ -47,6 +47,8 @@ proc loadConfig*(): RegenConfig =
       embeddingModel: SimilarityEmbeddingModel,
       apiKey: generateApiKey()
     )
+    info "Generated new config"
+    saveConfig(result)
     return
   
   try:
