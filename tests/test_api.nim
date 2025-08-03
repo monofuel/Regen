@@ -109,6 +109,13 @@ suite "Regen Search API Tests":
   client = newCurly()
   baseUrl = "http://" & TestHost & ":" & $TestPort
   
+  # Compile regen before getting API key
+  echo "Compiling regen for API key retrieval..."
+  let compileResult = execCmd("nim c src/regen.nim")
+  if compileResult != 0:
+    echo "Failed to compile regen"
+    quit(1)
+  
   # Get API key from regen command
   let apiKeyResult = execCmdEx("./src/regen --show-api-key")
   let apiKey = apiKeyResult.output.strip()

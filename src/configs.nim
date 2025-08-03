@@ -39,6 +39,7 @@ proc loadConfig*(): RegenConfig =
   
   if not fileExists(configPath):
     # Return default config if file doesn't exist
+    info "Config file does not exist, creating new one"
     result = RegenConfig(
       version: ConfigVersion,
       folders: @[],

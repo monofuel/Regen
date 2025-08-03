@@ -2,6 +2,7 @@
 
 import
   std/[strutils, strformat, os, algorithm],
+  jsony,
   ./types, ./configs, ./index, ./search, ./openapi, ./logs
 
 # re-export our internal modules for convenience
