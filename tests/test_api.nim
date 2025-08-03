@@ -28,7 +28,7 @@ suite "Regen Search API Tests":
     
     echo &"Starting test server with host {TestHost} and port {TestPort}"
     let process = startProcess("./src/regen", args = @["--server", $TestPort], 
-                              options = {poUsePath, poStdErrToStdOut})
+                              options = {poUsePath, poParentStreams, poStdErrToStdOut})
     return process
 
   proc waitForServerReady(maxWaitSeconds: int = 10): bool =
@@ -118,10 +118,25 @@ suite "Regen Search API Tests":
   
   # Get API key from regen command
   let apiKeyResult = execCmdEx("./src/regen --show-api-key")
-  let apiKey = apiKeyResult.output.strip()
+  let output = apiKeyResult.output.strip()
+  
+  # Parse the API key from "API Key: <key>" line among multiple output lines
+  var apiKey = ""
+  for line in output.splitLines():
+    if line.startsWith("API Key: "):
+      apiKey = line[9..^1]  # Skip "API Key: " prefix
+      break
+  
+  if apiKey == "":
+    echo "Could not find API Key in output:"
+    echo output
+    quit(1)
+  
+  echo "apiKey: ", apiKey
   
   authHeaders["Content-Type"] = "application/json"
   authHeaders["Authorization"] = "Bearer " & apiKey
+  echo "authHeaders: ", authHeaders
   
   createTestIndex()
   

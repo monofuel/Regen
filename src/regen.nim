@@ -239,7 +239,7 @@ proc main() =
     showConfig()
   of "--show-api-key":
     let config = loadConfig()
-    echo config.apiKey
+    echo "API Key: ", config.apiKey
   of "--index-all":
     indexAll()
   of "--server":
