@@ -5,6 +5,9 @@ import
   mummy, jsony,
   ./types, ./search, ./index, ./logs, ./configs
 
+# Global config loaded once at startup
+var serverConfig: RegenConfig
+
 # Request/Response types for API endpoints
 type
   RipgrepRequest* = object
@@ -115,8 +118,6 @@ proc toSimilarityResultApi*(simResult: SimilarityResult): SimilarityResultApi =
 
 proc isAuthenticated*(request: Request): bool =
   ## Check if the request has valid Bearer authentication.
-  let config = loadConfig()
-  
   # Check if Authorization header exists
   if "authorization" notin request.headers:
     return false
@@ -126,7 +127,8 @@ proc isAuthenticated*(request: Request): bool =
     return false
     
   let token = authHeader[7..^1]  # Remove "Bearer " prefix
-  return token == config.apiKey
+  {.gcsafe.}:
+    return token == serverConfig.apiKey
 
 # API endpoint handlers
 proc handleRipgrepSearch*(request: Request) =
@@ -600,6 +602,10 @@ proc router*(request: Request) =
 
 # Server startup
 proc startServer*(port: int = 8080, address: string = "localhost") =
+  # Load config once at startup
+  serverConfig = loadConfig()
+  info &"Loaded config with API key configured: {serverConfig.apiKey.len > 0}"
+  
   info &"Starting Regen Search API server on {address}:{port}"
   info &"OpenAPI spec available at: http://{address}:{port}/openapi.json"
   
