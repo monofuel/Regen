@@ -14,7 +14,9 @@ type
     version*: string
     folders*: seq[string]  ## List of folder paths to index
     gitRepos*: seq[string] ## List of git repository paths to index
-    extensions*: seq[string] ## File extensions to include in indexing
+    extensions*: seq[string] ## File extensions to include in indexing (legacy)
+    whitelistExtensions*: seq[string] ## Preferred allow-list of file extensions
+    blacklistExtensions*: seq[string] ## Block-list of file extensions
     embeddingModel*: string ## Model to use for embeddings
     apiBaseUrl*: string ## Base URL for the embeddings API (OpenAI-compatible)
     apiKey*: string ## Bearer token for API authentication

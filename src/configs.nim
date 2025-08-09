@@ -7,6 +7,8 @@ import
 
 const
   ConfigVersion* = "0.1.0"
+  DefaultWhitelist* = @[".nim", ".nims", ".md", ".markdown", ".txt", ".py", ".js", ".ts", ".rs", ".go"]
+  DefaultBlacklist* = @[".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".pdf", ".tfstate", ".pkrvars.hcl", ".tfvars"]
 
 proc generateApiKey*(): string =
   ## Generate a random API key for Bearer authentication.
@@ -44,7 +46,9 @@ proc loadConfig*(): RegenConfig =
       version: ConfigVersion,
       folders: @[],
       gitRepos: @[],
-      extensions: @[".nim", ".md", ".txt", ".py", ".js", ".ts", ".rs", ".go"],
+      extensions: DefaultWhitelist, # legacy field mirrors whitelist
+      whitelistExtensions: DefaultWhitelist,
+      blacklistExtensions: DefaultBlacklist,
       embeddingModel: DefaultEmbeddingModel,
       apiBaseUrl: DefaultApiBaseUrl,
       apiKey: generateApiKey()
@@ -61,7 +65,6 @@ proc loadConfig*(): RegenConfig =
     if result.apiKey.len == 0:
       result.apiKey = generateApiKey()
       info "Generated API key for existing config"
-      # Save the updated config with the new API key
       saveConfig(result)
     # Backfill apiBaseUrl if missing in existing configs
     if result.apiBaseUrl.len == 0:
@@ -73,6 +76,19 @@ proc loadConfig*(): RegenConfig =
       result.embeddingModel = DefaultEmbeddingModel
       info "Set default embedding model for existing config"
       saveConfig(result)
+    # Backfill extension lists
+    if result.whitelistExtensions.len == 0:
+      # Migrate from legacy 'extensions' if present, else use default
+      if result.extensions.len > 0:
+        result.whitelistExtensions = result.extensions
+      else:
+        result.whitelistExtensions = DefaultWhitelist
+      info "Set whitelistExtensions for existing config"
+      saveConfig(result)
+    if result.blacklistExtensions.len == 0:
+      result.blacklistExtensions = DefaultBlacklist
+      info "Set blacklistExtensions for existing config"
+      saveConfig(result)
   except:
     error &"Error loading config from {configPath}: {getCurrentExceptionMsg()}"
     # Return default config on error
@@ -80,7 +96,9 @@ proc loadConfig*(): RegenConfig =
       version: ConfigVersion,
       folders: @[],
       gitRepos: @[],
-      extensions: @[".nim", ".md", ".txt", ".py", ".js", ".ts", ".rs", ".go"],
+      extensions: DefaultWhitelist,
+      whitelistExtensions: DefaultWhitelist,
+      blacklistExtensions: DefaultBlacklist,
       embeddingModel: DefaultEmbeddingModel,
       apiBaseUrl: DefaultApiBaseUrl,
       apiKey: generateApiKey()
@@ -155,7 +173,8 @@ proc showConfig*() =
   info &"  Embedding Model: {config.embeddingModel}"
   info &"  API Base URL: {config.apiBaseUrl}"
   info &"  API Key: {config.apiKey[0..7]}...{config.apiKey[^8..^1]} (Bearer token for API)"
-  info &"  Extensions: {config.extensions.join(\", \")}"
+  info &"  Whitelist Extensions: {config.whitelistExtensions.join(\", \")}"
+  info &"  Blacklist Extensions: {config.blacklistExtensions.join(\", \")}"
   info &"  Folders ({config.folders.len}):"
   for folder in config.folders:
     info &"    - {folder}"
