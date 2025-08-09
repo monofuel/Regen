@@ -16,4 +16,4 @@ requires "benchy >= 0.0.1"
 requires "jsony >= 1.1.5"
 requires "mummy >= 0.4.7"
 
-requires "http://192.168.90.12:3000/monofuel/mcport >= 0.1.1"
+requires "http://10.11.4.11:3000/monofuel/mcport >= 0.1.1"
