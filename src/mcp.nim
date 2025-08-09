@@ -197,10 +197,7 @@ proc startMcpHttpServer*(args: seq[string]) =
   var address = "0.0.0.0"
 
   if args.len > 1:
-    try:
-      port = parseInt(args[1])
-    except:
-      warn "Invalid port number, using default: 8096"
+    port = parseInt(args[1])
   if args.len > 2:
     address = args[2]
 
