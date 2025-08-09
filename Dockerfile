@@ -8,6 +8,7 @@ RUN apt-get update && \
     libpcre3-dev \
     ripgrep \
     curl \
+    git \
     wget \
     dnsutils \
     ca-certificates && \

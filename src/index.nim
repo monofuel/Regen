@@ -501,4 +501,6 @@ proc indexAll*() =
     info &"Indexed {index.repo.files.len} files"
     let commitHash = getGitCommitHash(repoPath)
     let isDirty = isGitDirty(repoPath)
-    info &"Commit: {commitHash[0..7]}... (dirty: {isDirty})" 
+    let shortCommit = if commitHash.len >= 8: commitHash[0..7] else: commitHash
+    let ellipsis = if commitHash.len >= 8: "..." else: ""
+    info &"Commit: {shortCommit}{ellipsis} (dirty: {isDirty})"
