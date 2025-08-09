@@ -213,7 +213,7 @@ proc handleEmbeddingSearch*(request: Request) =
     
     # Extract values with defaults
     let maxResults = reqData.maxResults.get(10)
-    let model = reqData.model.get("nomic-embed-text")
+    let model = reqData.model.get("Qwen/Qwen3-Embedding-0.6B-GGUF")
     
     # Find all available indexes from config
     let indexPaths = findAllIndexes()
@@ -383,7 +383,7 @@ proc buildEmbeddingSearchSpec*(): JsonNode =
                 },
                 "model": {
                   "type": "string", 
-                  "default": "nomic-embed-text",
+                  "default": "Qwen/Qwen3-Embedding-0.6B-GGUF",
                   "description": "The embedding model to use for search"
                 }
               }

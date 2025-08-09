@@ -3,22 +3,28 @@
 import
   std/[strutils, os, osproc, json, algorithm, math],
   openai_leap,
-  ./types
+  ./types, ./configs
 
 const
-  SimilarityEmbeddingModel* = "nomic-embed-text"
+  # SimilarityEmbeddingModel* = "nomic-embed-text"
+  SimilarityEmbeddingModel* = "Qwen/Qwen3-Embedding-0.6B-GGUF"
   MaxInFlight* = 10
 
-# Solution-nine server
-# radeon pro w7500
-var localOllamaApi* = newOpenAiApi(
-  baseUrl = "http://10.11.2.16:11434/v1", 
-  apiKey = "ollama",
-  maxInFlight = MaxInFlight
-)
+var localOllamaApi*: OpenAiApi
+
+proc initEmbeddingClient*() =
+  ## Initialize the OpenAI-compatible client using values from config.
+  let cfg = loadConfig()
+  localOllamaApi = newOpenAiApi(
+    baseUrl = cfg.apiBaseUrl,
+    apiKey = cfg.apiKey,
+    maxInFlight = MaxInFlight
+  )
 
 proc generateEmbedding*(text: string, model: string = SimilarityEmbeddingModel): seq[float32] =
   ## Generate an embedding for the given text using ollama.
+  if localOllamaApi.isNil:
+    initEmbeddingClient()
   let embedding = localOllamaApi.generateEmbeddings(
     model = model,
     input = text

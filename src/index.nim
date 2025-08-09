@@ -55,14 +55,14 @@ proc isGitDirty*(repoPath: string): bool =
 proc newRegenFragment*(content: string, filePath: string, startLine: int = 1, endLine: int = -1): RegenFragment =
   ## Create a new RegenFragment from content.
   let actualEndLine = if endLine == -1: content.split('\n').len else: endLine
-  let embedding = generateEmbedding(content)
+  let embedding = generateEmbedding(content, loadConfig().embeddingModel)
   
   result = RegenFragment(
     startLine: startLine,
     endLine: actualEndLine,
     embedding: embedding,
     fragmentType: "file",
-    model: SimilarityEmbeddingModel,
+    model: loadConfig().embeddingModel,
     private: false,
     contentScore: if content.len > 1000: 90 else: 70,
     hash: createFileHash(content)

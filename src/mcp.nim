@@ -2,6 +2,7 @@
 
 import
   std/[json, strutils, strformat, algorithm, os],
+  mummy,
   mcport,
   ./types, ./search, ./index, ./logs, ./configs
 
@@ -30,7 +31,7 @@ proc buildEmbeddingInputSchema(): JsonNode =
     "properties": {
       "query": {"type": "string", "description": "Semantic query"},
       "maxResults": {"type": "integer", "default": 10, "description": "Maximum number of results"},
-      "model": {"type": "string", "default": "nomic-embed-text", "description": "Embedding model"}
+      "model": {"type": "string", "default": "Qwen/Qwen3-Embedding-0.6B-GGUF", "description": "Embedding model"}
     },
     "required": ["query"],
     "additionalProperties": false,
@@ -130,7 +131,7 @@ proc registerRegenTools(server: McpServer) =
         maxResults = arguments["maxResults"].getInt()
       except:
         discard
-    let model = if arguments.hasKey("model"): arguments["model"].getStr() else: "nomic-embed-text"
+    let model = if arguments.hasKey("model"): arguments["model"].getStr() else: "Qwen/Qwen3-Embedding-0.6B-GGUF"
 
     let indexPaths = findAllIndexes()
     if indexPaths.len == 0:
@@ -196,5 +197,20 @@ proc startMcpHttpServer*(args: seq[string]) =
   let mcpServer = newMcpServer(McpServerName, McpServerVersion)
   registerRegenTools(mcpServer)
 
-  let httpServer = newHttpMcpServer(mcpServer, true)
+  # Optional Bearer auth: use config.apiKey if present
+  let cfg = loadConfig()
+  if cfg.apiKey.len == 0:
+    error "API Key not configured. Set it in the Regen config before starting the MCP server."
+    quit(1)
+  var authCb: AuthCallback = nil
+  authCb = proc(request: Request): bool {.gcsafe.} =
+    if "authorization" notin request.headers:
+      return false
+    let headerVal = request.headers["authorization"]
+    if not headerVal.startsWith("Bearer "):
+      return false
+    let token = headerVal[7..^1]
+    return token == cfg.apiKey
+
+  let httpServer = newHttpMcpServer(mcpServer, true, authCb)
   httpServer.serve(port, address)

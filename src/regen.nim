@@ -30,6 +30,7 @@ proc printHelp*() =
   info "  --add-repo-index <path>     Add git repository to tracking config"
   info "  --show-config               Show current configuration"
   info "  --show-api-key              Show API key for Bearer authentication"
+  info "  --show-indexes              Show tracked folders/repos as Markdown"
   info "  --index-all                 Index all configured folders and repos"
   info ""
   info "Server Commands:"
@@ -46,7 +47,7 @@ proc printHelp*() =
   info "Use --index-all to create/update indexes before searching."
   info ""
   info "Other:"
-  info "  help                        Show this help message"
+  info "  -h, --help                 Show this help message"
 
 proc extractFragmentContent*(file: RegenFile, fragment: RegenFragment): seq[string] =
   ## Extract the actual text content from a file fragment.
@@ -194,6 +195,54 @@ proc performEmbeddingSearch*(args: seq[string]) =
       let actualLineNum = result.fragment.startLine + lineIdx
       echo &"{actualLineNum}:{lineContent}"
 
+proc showTrackedMarkdown*() =
+  ## Print configured folders and repos with index status as Markdown.
+  let cfg = loadConfig()
+  echo "# Regen Indexed Paths"
+  echo ""
+  echo &"Generated from config version {cfg.version}"
+  echo ""
+  # Folders
+  echo &"## Folders ({cfg.folders.len})"
+  if cfg.folders.len == 0:
+    echo "- _None configured_"
+  for folderPath in cfg.folders:
+    let folderName = extractFilename(folderPath)
+    let safeFolderName = folderName.replace("/", "_").replace("\\", "_")
+    let indexPath = getHomeDir() / ".regen" / "folders" / &"{safeFolderName}.flat"
+    if fileExists(indexPath):
+      try:
+        let idx = readIndexFromFile(indexPath)
+        let fileCount = if idx.kind == regen_folder: idx.folder.files.len else: 0
+        echo &"- [x] `{folderPath}`"
+        echo &"  - files: {fileCount}"
+      except:
+        echo &"- [x] `{folderPath}`"
+        echo &"  - files: unknown (failed to read index)"
+    else:
+      echo &"- [ ] `{folderPath}`"
+      echo &"  - index: _missing_ (expected `{indexPath}`)"
+  echo ""
+  # Git repos
+  echo &"## Git Repos ({cfg.gitRepos.len})"
+  if cfg.gitRepos.len == 0:
+    echo "- _None configured_"
+  for repoPath in cfg.gitRepos:
+    let repoName = extractFilename(repoPath)
+    let indexPath = getHomeDir() / ".regen" / "repos" / &"{repoName}.flat"
+    if fileExists(indexPath):
+      try:
+        let idx = readIndexFromFile(indexPath)
+        let fileCount = if idx.kind == regen_git_repo: idx.repo.files.len else: 0
+        echo &"- [x] `{repoPath}`"
+        echo &"  - files: {fileCount}"
+      except:
+        echo &"- [x] `{repoPath}`"
+        echo &"  - files: unknown (failed to read index)"
+    else:
+      echo &"- [ ] `{repoPath}`"
+      echo &"  - index: _missing_ (expected `{indexPath}`)"
+
 proc startApiServer*(args: seq[string]) =
   ## Start the OpenAPI server with optional port and address.
   var port = 8095
@@ -215,7 +264,7 @@ proc startApiServer*(args: seq[string]) =
 proc main() =
   let args = commandLineParams()
   
-  if args.len == 0 or (args.len > 0 and args[0] == "help"):
+  if args.len == 0 or (args.len > 0 and (args[0] == "--help" or args[0] == "-h")):
     printHelp()
     return
   
@@ -238,6 +287,8 @@ proc main() =
   of "--show-api-key":
     let config = loadConfig()
     echo "API Key: ", config.apiKey
+  of "--show-indexes":
+    showTrackedMarkdown()
   of "--index-all":
     indexAll()
   of "--server":

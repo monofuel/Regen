@@ -45,7 +45,8 @@ proc loadConfig*(): RegenConfig =
       folders: @[],
       gitRepos: @[],
       extensions: @[".nim", ".md", ".txt", ".py", ".js", ".ts", ".rs", ".go"],
-      embeddingModel: SimilarityEmbeddingModel,
+      embeddingModel: DefaultEmbeddingModel,
+      apiBaseUrl: DefaultApiBaseUrl,
       apiKey: generateApiKey()
     )
     info "Generated new config"
@@ -62,6 +63,16 @@ proc loadConfig*(): RegenConfig =
       info "Generated API key for existing config"
       # Save the updated config with the new API key
       saveConfig(result)
+    # Backfill apiBaseUrl if missing in existing configs
+    if result.apiBaseUrl.len == 0:
+      result.apiBaseUrl = DefaultApiBaseUrl
+      info "Set default API base URL for existing config"
+      saveConfig(result)
+    # Backfill embeddingModel if missing
+    if result.embeddingModel.len == 0:
+      result.embeddingModel = DefaultEmbeddingModel
+      info "Set default embedding model for existing config"
+      saveConfig(result)
   except:
     error &"Error loading config from {configPath}: {getCurrentExceptionMsg()}"
     # Return default config on error
@@ -70,7 +81,8 @@ proc loadConfig*(): RegenConfig =
       folders: @[],
       gitRepos: @[],
       extensions: @[".nim", ".md", ".txt", ".py", ".js", ".ts", ".rs", ".go"],
-      embeddingModel: SimilarityEmbeddingModel,
+      embeddingModel: DefaultEmbeddingModel,
+      apiBaseUrl: DefaultApiBaseUrl,
       apiKey: generateApiKey()
     )
 
@@ -141,6 +153,7 @@ proc showConfig*() =
   info "Regen Configuration:"
   info &"  Version: {config.version}"
   info &"  Embedding Model: {config.embeddingModel}"
+  info &"  API Base URL: {config.apiBaseUrl}"
   info &"  API Key: {config.apiKey[0..7]}...{config.apiKey[^8..^1]} (Bearer token for API)"
   info &"  Extensions: {config.extensions.join(\", \")}"
   info &"  Folders ({config.folders.len}):"
