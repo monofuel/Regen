@@ -12,7 +12,7 @@ docker-push:
 	docker buildx build \
 	--platform linux/amd64 \
 	--push \
-	--tag $(IMAGE):latest \
+	--tag $(IMAGE)/regen:latest \
 	-f Dockerfile .
 
 

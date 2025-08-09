@@ -34,7 +34,6 @@ jobs:
   build-docker:
     runs-on: monolab-builder
     needs: build
-    if: github.ref == 'refs/heads/master' && hashFiles('Dockerfile') != ''
     steps:
       - name: Checkout
         uses: actions/checkout@v4
