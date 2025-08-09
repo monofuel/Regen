@@ -8,7 +8,17 @@ import
 const
   ConfigVersion* = "0.1.0"
   DefaultWhitelist* = @[".nim", ".nims", ".md", ".markdown", ".txt", ".py", ".js", ".ts", ".rs", ".go"]
-  DefaultBlacklist* = @[".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".pdf", ".tfstate", ".pkrvars.hcl", ".tfvars"]
+  DefaultBlacklist* = @[
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".pdf",
+    ".tfstate", ".pkrvars.hcl", ".tfvars",
+    ".pem", ".key", ".p12", ".pfx"
+  ]
+  DefaultBlacklistFilenames* = @[
+    ".env", ".env.*", ".env.local", ".env.development", ".env.production", ".env.test", ".env.ci",
+    ".envrc", ".npmrc", ".pypirc", ".netrc", ".htpasswd", ".pgpass",
+    "id_rsa", "id_ecdsa", "id_ed25519", ".dockerconfigjson",
+    "terraform.tfstate", "terraform.tfstate.backup"
+  ]
 
 proc generateApiKey*(): string =
   ## Generate a random API key for Bearer authentication.
@@ -49,6 +59,7 @@ proc loadConfig*(): RegenConfig =
       extensions: DefaultWhitelist, # legacy field mirrors whitelist
       whitelistExtensions: DefaultWhitelist,
       blacklistExtensions: DefaultBlacklist,
+      blacklistFilenames: DefaultBlacklistFilenames,
       embeddingModel: DefaultEmbeddingModel,
       apiBaseUrl: DefaultApiBaseUrl,
       apiKey: generateApiKey()
@@ -89,6 +100,10 @@ proc loadConfig*(): RegenConfig =
       result.blacklistExtensions = DefaultBlacklist
       info "Set blacklistExtensions for existing config"
       saveConfig(result)
+    if result.blacklistFilenames.len == 0:
+      result.blacklistFilenames = DefaultBlacklistFilenames
+      info "Set blacklistFilenames for existing config"
+      saveConfig(result)
   except:
     error &"Error loading config from {configPath}: {getCurrentExceptionMsg()}"
     # Return default config on error
@@ -99,6 +114,7 @@ proc loadConfig*(): RegenConfig =
       extensions: DefaultWhitelist,
       whitelistExtensions: DefaultWhitelist,
       blacklistExtensions: DefaultBlacklist,
+      blacklistFilenames: DefaultBlacklistFilenames,
       embeddingModel: DefaultEmbeddingModel,
       apiBaseUrl: DefaultApiBaseUrl,
       apiKey: generateApiKey()

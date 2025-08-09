@@ -5,7 +5,7 @@ import
   flatty, crunchy,
   ./types, ./search, ./configs, ./logs, ./fragment
 
-const RegenFileIndexVersion* = 5
+const RegenFileIndexVersion* = 6
 
 proc getIndexFormatPath(): string =
   ## Path to the standalone index format version file.
@@ -163,29 +163,57 @@ proc newRegenFile*(filePath: string): RegenFile =
     fragments: fragments
   )
 
-proc shouldInclude*(path: string, whitelist: seq[string], blacklist: seq[string]): bool =
-  ## Decide whether a file should be included based on extension filters.
-  let ext = splitFile(path).ext.toLower
-  if ext in blacklist:
+proc filenameMatches(name: string, pattern: string): bool =
+  ## Simple wildcard match supporting a single '*' character.
+  let starIndex = pattern.find('*')
+  if starIndex == -1:
+    return name == pattern
+  let prefix = if starIndex > 0: pattern[0 ..< starIndex] else: ""
+  let suffix = if starIndex + 1 <= pattern.high: pattern[starIndex + 1 .. pattern.high] else: ""
+  if prefix.len > 0 and not name.startsWith(prefix):
     return false
-  if whitelist.len > 0 and ext notin whitelist:
+  if suffix.len > 0 and not name.endsWith(suffix):
+    return false
+  if prefix.len + suffix.len > name.len:
     return false
   true
 
-proc findProjectFiles*(rootPath: string, whitelist: seq[string], blacklist: seq[string]): seq[string] =
+proc shouldInclude*(path: string, whitelist: seq[string], blacklistExtensions: seq[string], blacklistFilenames: seq[string]): bool =
+  ## Decide whether a file should be included based on extension and filename filters.
+  let (_, name, ext) = splitFile(path)
+  let lowerExt = ext.toLower
+  # Extension-based block
+  if lowerExt in blacklistExtensions:
+    return false
+  # Filename-based block (supports simple '*' wildcard)
+  let base = extractFilename(path)
+  for patt in blacklistFilenames:
+    if filenameMatches(base, patt):
+      return false
+  # Whitelist extension enforcement
+  if whitelist.len > 0 and lowerExt notin whitelist:
+    return false
+  true
+
+proc findProjectFiles*(rootPath: string, whitelist: seq[string], blacklistExtensions: seq[string], blacklistFilenames: seq[string]): seq[string] =
   ## Find all files that pass whitelist/blacklist filters in the project directory.
   result = @[]
   
   for path in walkDirRec(rootPath, yieldFilter = {pcFile}):
-    if shouldInclude(path, whitelist, blacklist):
+    if shouldInclude(path, whitelist, blacklistExtensions, blacklistFilenames):
       result.add(path)
   
   # Sort for consistent ordering
   result.sort()
 
-proc newRegenGitRepo*(repoPath: string, whitelist: seq[string], blacklist: seq[string]): RegenGitRepo =
+proc findProjectFiles*(rootPath: string, whitelist: seq[string]): seq[string] =
+  ## Backward-compatible overload using config-defined blacklists.
+  let cfg = loadConfig()
+  findProjectFiles(rootPath, whitelist, cfg.blacklistExtensions, cfg.blacklistFilenames)
+
+proc newRegenGitRepo*(repoPath: string, whitelist: seq[string], blacklistExtensions: seq[string], blacklistFilenames: seq[string]): RegenGitRepo =
   ## Create a new RegenGitRepo by scanning the repository (serial to control memory).
-  let filePaths = findProjectFiles(repoPath, whitelist, blacklist)
+  let filePaths = findProjectFiles(repoPath, whitelist, blacklistExtensions, blacklistFilenames)
   
   var regenFiles: seq[RegenFile] = @[]
   for filePath in filePaths:
@@ -198,9 +226,9 @@ proc newRegenGitRepo*(repoPath: string, whitelist: seq[string], blacklist: seq[s
     files: regenFiles
   )
 
-proc newRegenFolder*(folderPath: string, whitelist: seq[string] = @[], blacklist: seq[string] = @[]): RegenFolder =
+proc newRegenFolder*(folderPath: string, whitelist: seq[string] = @[], blacklistExtensions: seq[string] = @[], blacklistFilenames: seq[string] = @[]): RegenFolder =
   ## Create a new RegenFolder by scanning the folder (serial to control memory).
-  let filePaths = findProjectFiles(folderPath, whitelist, blacklist)
+  let filePaths = findProjectFiles(folderPath, whitelist, blacklistExtensions, blacklistFilenames)
   
   var regenFiles: seq[RegenFile] = @[]
   for filePath in filePaths:
@@ -211,15 +239,25 @@ proc newRegenFolder*(folderPath: string, whitelist: seq[string] = @[], blacklist
     files: regenFiles
   )
 
-proc newRegenIndex*(indexType: RegenIndexType, path: string, whitelist: seq[string], blacklist: seq[string]): RegenIndex =
+proc newRegenIndex*(indexType: RegenIndexType, path: string, whitelist: seq[string], blacklistExtensions: seq[string], blacklistFilenames: seq[string]): RegenIndex =
   ## Create a new RegenIndex of the specified type using parallel processing.
   result = RegenIndex(version: "0.1.0", kind: indexType)
   
   case indexType
   of regen_git_repo:
-    result.repo = newRegenGitRepo(path, whitelist, blacklist)
+    result.repo = newRegenGitRepo(path, whitelist, blacklistExtensions, blacklistFilenames)
   of regen_folder:
-    result.folder = newRegenFolder(path, whitelist, blacklist) 
+    result.folder = newRegenFolder(path, whitelist, blacklistExtensions, blacklistFilenames) 
+
+proc newRegenIndex*(indexType: RegenIndexType, path: string, whitelist: seq[string]): RegenIndex =
+  ## Backward-compatible overload using config-defined blacklists.
+  let cfg = loadConfig()
+  newRegenIndex(indexType, path, whitelist, cfg.blacklistExtensions, cfg.blacklistFilenames)
+
+proc newRegenIndex*(indexType: RegenIndexType, path: string, whitelist: seq[string], blacklistExtensions: seq[string]): RegenIndex =
+  ## Backward-compatible overload taking only extension blacklist.
+  let cfg = loadConfig()
+  newRegenIndex(indexType, path, whitelist, blacklistExtensions, cfg.blacklistFilenames)
 
 proc needsReindexing*(existingFile: RegenFile, currentPath: string): bool =
   ## Check if a file needs to be reindexed based on modification time and hash.
@@ -241,12 +279,12 @@ proc needsReindexing*(existingFile: RegenFile, currentPath: string): bool =
   except:
     return true
 
-proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, whitelist: seq[string], blacklist: seq[string]): RegenIndex =
+proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, whitelist: seq[string], blacklistExtensions: seq[string], blacklistFilenames: seq[string]): RegenIndex =
   ## Update an existing index with only the files that have changed.
   result = existingIndex
   
   info "Checking for changes..."
-  let currentFiles = findProjectFiles(currentPath, whitelist, blacklist)
+  let currentFiles = findProjectFiles(currentPath, whitelist, blacklistExtensions, blacklistFilenames)
   var filesToUpdate: seq[string] = @[]
   var filesToRemove: seq[int] = @[]
   
@@ -344,7 +382,8 @@ proc indexAll*() =
   let config = loadConfig()
   
   let whitelist = if config.whitelistExtensions.len > 0: config.whitelistExtensions else: config.extensions
-  let blacklist = config.blacklistExtensions
+  let blacklistExts = config.blacklistExtensions
+  let blacklistNames = config.blacklistFilenames
 
   info "Indexing all configured paths..."
   
@@ -369,19 +408,19 @@ proc indexAll*() =
       try:
         let existingIndex = readIndexFromFile(indexPath)
         if existingIndex.kind == regen_folder:
-          index = updateRegenIndex(existingIndex, folderPath, whitelist, blacklist)
+          index = updateRegenIndex(existingIndex, folderPath, whitelist, blacklistExts, blacklistNames)
         else:
           warn "Existing index is wrong type, rebuilding..."
-          let folder = newRegenFolder(folderPath, whitelist, blacklist)
+          let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
           index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
       except:
         warn "Could not load existing index, rebuilding..."
-        let folder = newRegenFolder(folderPath, whitelist, blacklist)
+        let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
         index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
     else:
       # Create new index
       info "Creating new index..."
-      let folder = newRegenFolder(folderPath, whitelist, blacklist)
+      let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
       index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
     
     writeIndexToFile(index, indexPath)
@@ -412,19 +451,19 @@ proc indexAll*() =
       try:
         let existingIndex = readIndexFromFile(indexPath)
         if existingIndex.kind == regen_git_repo:
-          index = updateRegenIndex(existingIndex, repoPath, whitelist, blacklist)
+          index = updateRegenIndex(existingIndex, repoPath, whitelist, blacklistExts, blacklistNames)
         else:
           warn "Existing index is wrong type, rebuilding..."
-          let repo = newRegenGitRepo(repoPath, whitelist, blacklist)
+          let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
           index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
       except:
         warn "Could not load existing index, rebuilding..."
-        let repo = newRegenGitRepo(repoPath, whitelist, blacklist)
+        let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
         index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
     else:
       # Create new index
       info "Creating new index..."
-      let repo = newRegenGitRepo(repoPath, whitelist, blacklist)
+      let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
       index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
     
     writeIndexToFile(index, indexPath)

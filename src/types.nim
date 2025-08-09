@@ -4,7 +4,7 @@ const
   #DefaultEmbeddingModel* = "Qwen/Qwen3-Embedding-0.6B-GGUF"
   #DefaultApiBaseUrl* = "http://10.11.2.16:1234/v1"
   DefaultEmbeddingModel* = "nomic-embed-text"
-  DefaultApiBaseUrl* = "http://10.11.2.16:11434/v1"
+  DefaultApiBaseUrl* = "http://localhost:11434/v1"
 
 type
   RegenIndexType* = enum
@@ -19,6 +19,7 @@ type
     extensions*: seq[string] ## File extensions to include in indexing (legacy)
     whitelistExtensions*: seq[string] ## Preferred allow-list of file extensions
     blacklistExtensions*: seq[string] ## Block-list of file extensions
+    blacklistFilenames*: seq[string] ## Block-list of specific filenames (e.g., .env)
     embeddingModel*: string ## Model to use for embeddings
     apiBaseUrl*: string ## Base URL for the embeddings API (OpenAI-compatible)
     apiKey*: string ## Bearer token for API authentication
