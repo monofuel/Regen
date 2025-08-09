@@ -1,8 +1,10 @@
 ## Shared types for Regen indexing and search functionality
 
 const
-  DefaultEmbeddingModel* = "Qwen/Qwen3-Embedding-0.6B-GGUF"
-  DefaultApiBaseUrl* = "http://10.11.2.16:1234/v1"
+  #DefaultEmbeddingModel* = "Qwen/Qwen3-Embedding-0.6B-GGUF"
+  #DefaultApiBaseUrl* = "http://10.11.2.16:1234/v1"
+  DefaultEmbeddingModel* = "nomic-embed-text"
+  DefaultApiBaseUrl* = "http://10.11.2.16:11434/v1"
 
 type
   RegenIndexType* = enum
