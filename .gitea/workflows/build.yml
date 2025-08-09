@@ -62,4 +62,4 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
-          tags: gitea.solution-nine.monofuel.dev/monofuel/regen:latest
+          tags: gitea.solution-nine.monofuel.dev/monofuel/regen/regen:latest
