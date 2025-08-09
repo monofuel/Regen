@@ -4,7 +4,7 @@ IMAGE = gitea.solution-nine.monofuel.dev/monofuel/regen
 docker-build:
 	docker buildx build \
 	--platform linux/amd64 \
-	--tag $(IMAGE):latest \
+	--tag $(IMAGE)/regen:latest \
 	-f Dockerfile .
 
 .PHONY: docker-push
