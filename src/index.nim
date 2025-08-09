@@ -279,19 +279,19 @@ proc needsReindexing*(existingFile: RegenFile, currentPath: string): bool =
   except:
     return true
 
-proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, whitelist: seq[string], blacklistExtensions: seq[string], blacklistFilenames: seq[string]): RegenIndex =
+proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, whitelist: seq[string], blacklistExtensions: seq[string], blacklistFilenames: seq[string]): tuple[index: RegenIndex, changed: bool] =
   ## Update an existing index with only the files that have changed.
-  result = existingIndex
+  var updated = existingIndex
   
   info "Checking for changes..."
   let currentFiles = findProjectFiles(currentPath, whitelist, blacklistExtensions, blacklistFilenames)
   var filesToUpdate: seq[string] = @[]
   var filesToRemove: seq[int] = @[]
   
-  case result.kind:
+  case updated.kind:
   of regen_folder:
     # Check existing files for changes
-    for i, existingFile in result.folder.files:
+    for i, existingFile in updated.folder.files:
       if existingFile.path notin currentFiles:
         # File was deleted
         filesToRemove.add(i)
@@ -303,14 +303,14 @@ proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, whitelist
     
     # Check for new files
     for currentFile in currentFiles:
-      let existsInIndex = result.folder.files.anyIt(it.path == currentFile)
+      let existsInIndex = updated.folder.files.anyIt(it.path == currentFile)
       if not existsInIndex:
         filesToUpdate.add(currentFile)
         info &"    - New: {extractFilename(currentFile)}"
     
     # Remove deleted files (in reverse order to maintain indices)
     for i in countdown(filesToRemove.len - 1, 0):
-      result.folder.files.delete(filesToRemove[i])
+      updated.folder.files.delete(filesToRemove[i])
     
     # Update/add changed files
     if filesToUpdate.len > 0:
@@ -320,22 +320,22 @@ proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, whitelist
       for filePath in filesToUpdate:
         let newFile = newRegenFile(filePath)
         var existingIdx = -1
-        for i, file in result.folder.files:
+        for i, file in updated.folder.files:
           if file.path == newFile.path:
             existingIdx = i
             break
         if existingIdx >= 0:
-          result.folder.files[existingIdx] = newFile
+          updated.folder.files[existingIdx] = newFile
         else:
-          result.folder.files.add(newFile)
+          updated.folder.files.add(newFile)
   
   of regen_git_repo:
     # Update git-specific info
-    result.repo.latestCommitHash = getGitCommitHash(currentPath)
-    result.repo.isDirty = isGitDirty(currentPath)
+    updated.repo.latestCommitHash = getGitCommitHash(currentPath)
+    updated.repo.isDirty = isGitDirty(currentPath)
     
     # Check existing files for changes
-    for i, existingFile in result.repo.files:
+    for i, existingFile in updated.repo.files:
       if existingFile.path notin currentFiles:
         # File was deleted
         filesToRemove.add(i)
@@ -347,14 +347,14 @@ proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, whitelist
     
     # Check for new files
     for currentFile in currentFiles:
-      let existsInIndex = result.repo.files.anyIt(it.path == currentFile)
+      let existsInIndex = updated.repo.files.anyIt(it.path == currentFile)
       if not existsInIndex:
         filesToUpdate.add(currentFile)
         info &"    - New: {extractFilename(currentFile)}"
     
     # Remove deleted files (in reverse order to maintain indices)
     for i in countdown(filesToRemove.len - 1, 0):
-      result.repo.files.delete(filesToRemove[i])
+      updated.repo.files.delete(filesToRemove[i])
     
     # Update/add changed files
     if filesToUpdate.len > 0:
@@ -364,17 +364,19 @@ proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, whitelist
       for filePath in filesToUpdate:
         let newFile = newRegenFile(filePath)
         var existingIdx = -1
-        for i, file in result.repo.files:
+        for i, file in updated.repo.files:
           if file.path == newFile.path:
             existingIdx = i
             break
         if existingIdx >= 0:
-          result.repo.files[existingIdx] = newFile
+          updated.repo.files[existingIdx] = newFile
         else:
-          result.repo.files.add(newFile)
+          updated.repo.files.add(newFile)
   
-  if filesToUpdate.len == 0 and filesToRemove.len == 0:
+  let hasChanges = not (filesToUpdate.len == 0 and filesToRemove.len == 0)
+  if not hasChanges:
     info "No changes detected"
+  result = (updated, hasChanges)
 
 proc indexAll*() =
   ## Index all configured folders and git repositories with intelligent incremental updates.
@@ -402,29 +404,43 @@ proc indexAll*() =
     createDir(parentDir(indexPath))
     
     var index: RegenIndex
+    var changed = false
     
     if fileExists(indexPath):
       # Load existing index and update incrementally
       try:
         let existingIndex = readIndexFromFile(indexPath)
         if existingIndex.kind == regen_folder:
-          index = updateRegenIndex(existingIndex, folderPath, whitelist, blacklistExts, blacklistNames)
+          let (updatedIndex, didChange) = updateRegenIndex(existingIndex, folderPath, whitelist, blacklistExts, blacklistNames)
+          changed = didChange
+          if not changed:
+            info "Unchanged; skipping write"
+            index = existingIndex
+          else:
+            index = updatedIndex
         else:
           warn "Existing index is wrong type, rebuilding..."
           let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
           index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
+          changed = true
       except:
         warn "Could not load existing index, rebuilding..."
         let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
         index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
+        changed = true
     else:
       # Create new index
       info "Creating new index..."
       let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
       index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
+      changed = true
     
-    writeIndexToFile(index, indexPath)
-    info &"Saved index to: {indexPath}"
+    # Only persist if we actually rebuilt or updated
+    if changed:
+      writeIndexToFile(index, indexPath)
+      info &"Saved index to: {indexPath}"
+    else:
+      info "No index write necessary"
     info &"Indexed {index.folder.files.len} files"
   
   # Index git repos
@@ -445,29 +461,43 @@ proc indexAll*() =
     createDir(parentDir(indexPath))
     
     var index: RegenIndex
+    var changed = false
     
     if fileExists(indexPath):
       # Load existing index and update incrementally
       try:
         let existingIndex = readIndexFromFile(indexPath)
         if existingIndex.kind == regen_git_repo:
-          index = updateRegenIndex(existingIndex, repoPath, whitelist, blacklistExts, blacklistNames)
+          let (updatedIndex, didChange) = updateRegenIndex(existingIndex, repoPath, whitelist, blacklistExts, blacklistNames)
+          changed = didChange
+          if not changed:
+            info "Unchanged; skipping write"
+            index = existingIndex
+          else:
+            index = updatedIndex
         else:
           warn "Existing index is wrong type, rebuilding..."
           let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
           index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
+          changed = true
       except:
         warn "Could not load existing index, rebuilding..."
         let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
         index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
+        changed = true
     else:
       # Create new index
       info "Creating new index..."
       let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
       index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
+      changed = true
     
-    writeIndexToFile(index, indexPath)
-    info &"Saved index to: {indexPath}"
+    # Only persist if we actually rebuilt or updated
+    if changed:
+      writeIndexToFile(index, indexPath)
+      info &"Saved index to: {indexPath}"
+    else:
+      info "No index write necessary"
     info &"Indexed {index.repo.files.len} files"
     let commitHash = getGitCommitHash(repoPath)
     let isDirty = isGitDirty(repoPath)

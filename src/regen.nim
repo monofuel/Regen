@@ -35,6 +35,7 @@ proc printHelp*() =
   info "  --show-api-key              Show API key for Bearer authentication"
   info "  --show-indexes              Show tracked folders/repos as Markdown"
   info "  --index-all                 Index all configured folders and repos"
+  info "  --index-watch [seconds]     Continuously reindex on a timer (default: 20s)"
   info ""
   info "Server Commands:"
   info "  --server [port] [address]   Start OpenAPI server (default: 8080, localhost)"
@@ -294,6 +295,24 @@ proc startApiServer*(args: seq[string]) =
   info &"Starting Regen OpenAPI server on {address}:{port}"
   startServer(port, address)
 
+proc startIndexWatch*(args: seq[string]) =
+  ## Start a polling loop that periodically runs indexAll with robust error handling.
+  var intervalSeconds = 20
+  if args.len > 1:
+    intervalSeconds = parseInt(args[1])
+  if intervalSeconds < 1:
+    intervalSeconds = 1
+
+  info &"Starting index watch loop (interval: {intervalSeconds}s). Press Ctrl+C to stop."
+  while true:
+    try:
+      indexAll()
+    except Exception as e:
+      error &"Index watch iteration failed: {e.msg}"
+    finally:
+      # Always wait to avoid tight loops on repeated errors
+      sleep(intervalSeconds * 1000)
+
 proc main() =
   let args = commandLineParams()
   
@@ -324,6 +343,8 @@ proc main() =
     showTrackedMarkdown()
   of "--index-all":
     indexAll()
+  of "--index-watch":
+    startIndexWatch(args)
   of "--server":
     startApiServer(args)
   of "--mcp-server":
