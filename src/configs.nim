@@ -66,6 +66,13 @@ proc loadConfig*(): RegenConfig =
     )
     info "Generated new config"
     saveConfig(result)
+    # Allow environment override for API base URL (do not persist)
+    let envApiBaseUrl = getEnv("OPENAI_API_BASE_URL")
+    let envApiBaseUrlAlt = getEnv("OPENAI_BASE_URL")
+    if envApiBaseUrl.len > 0:
+      result.apiBaseUrl = envApiBaseUrl
+    elif envApiBaseUrlAlt.len > 0:
+      result.apiBaseUrl = envApiBaseUrlAlt
     return
   
   try:
@@ -119,6 +126,14 @@ proc loadConfig*(): RegenConfig =
       apiBaseUrl: DefaultApiBaseUrl,
       apiKey: generateApiKey()
     )
+
+  # Allow environment override for API base URL (do not persist)
+  let envApiBaseUrl = getEnv("OPENAI_API_BASE_URL")
+  let envApiBaseUrlAlt = getEnv("OPENAI_BASE_URL")
+  if envApiBaseUrl.len > 0:
+    result.apiBaseUrl = envApiBaseUrl
+  elif envApiBaseUrlAlt.len > 0:
+    result.apiBaseUrl = envApiBaseUrlAlt
 
 proc addFolderToConfig*(folderPath: string) =
   ## Add a folder path to the config.

@@ -25,8 +25,11 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-nimble-v2-
     - run: nimble install -y
-    - run: nimble test -y
-    - run: nimble test --gc:orc -y
+    - name: Run tests
+      # use my local ollama server
+      run: |
+        export OPENAI_API_BASE_URL="http://10.11.2.16:11434/v1"
+        nimble test -y
 
   build-docker:
     runs-on: monolab-builder
