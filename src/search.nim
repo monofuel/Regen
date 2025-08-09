@@ -51,8 +51,19 @@ proc cosineSimilarity*(a, b: seq[float32]): float32 =
   
   result = dotProduct / magnitude
 
-proc findSimilarFragments*(index: RegenIndex, queryText: string, maxResults: int = 10, model: string = SimilarityEmbeddingModel): seq[SimilarityResult] =
+proc extAllowed(filePath: string, allowed: seq[string]): bool =
+  ## Check if the file extension is allowed by the provided list (empty list means allow all).
+  if allowed.len == 0:
+    return true
+  let ext = splitFile(filePath).ext.toLower
+  for a in allowed:
+    if ext == a:
+      return true
+  false
+
+proc findSimilarFragments*(index: RegenIndex, queryText: string, maxResults: int = 10, model: string = SimilarityEmbeddingModel, allowedExtensions: seq[string] = @[]): seq[SimilarityResult] =
   ## Find the most similar fragments to the query text.
+  ## If allowedExtensions is non-empty, restrict results to files whose extension is in the list.
   let queryEmbedding = generateEmbedding(queryText, model)
   var results: seq[SimilarityResult] = @[]
   
@@ -60,6 +71,8 @@ proc findSimilarFragments*(index: RegenIndex, queryText: string, maxResults: int
   case index.kind
   of regen_git_repo:
     for file in index.repo.files:
+      if not extAllowed(file.path, allowedExtensions):
+        continue
       for fragment in file.fragments:
         if fragment.model == model:
           let similarity = cosineSimilarity(queryEmbedding, fragment.embedding)
@@ -70,6 +83,8 @@ proc findSimilarFragments*(index: RegenIndex, queryText: string, maxResults: int
           ))
   of regen_folder:
     for file in index.folder.files:
+      if not extAllowed(file.path, allowedExtensions):
+        continue
       for fragment in file.fragments:
         if fragment.model == model:
           let similarity = cosineSimilarity(queryEmbedding, fragment.embedding)

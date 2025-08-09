@@ -31,7 +31,8 @@ proc buildEmbeddingInputSchema(): JsonNode =
     "properties": {
       "query": {"type": "string", "description": "Semantic query"},
       "maxResults": {"type": "integer", "default": 10, "description": "Maximum number of results"},
-      "model": {"type": "string", "default": "Qwen/Qwen3-Embedding-0.6B-GGUF", "description": "Embedding model"}
+      "model": {"type": "string", "default": "nomic-embed-text", "description": "Embedding model"},
+      "extensions": {"type": "array", "description": "Optional list of file extensions to include (e.g., ['.nim', '.md'])", "items": {"type": "string"}}
     },
     "required": ["query"],
     "additionalProperties": false,
@@ -136,6 +137,11 @@ proc registerRegenTools(server: McpServer) =
       except:
         discard
     let model = if arguments.hasKey("model"): arguments["model"].getStr() else: config.embeddingModel
+    var exts: seq[string] = @[]
+    if arguments.hasKey("extensions") and arguments["extensions"].kind == JArray:
+      for node in arguments["extensions"]:
+        if node.kind == JString:
+          exts.add(node.getStr())
 
     let indexPaths = findAllIndexes()
     if indexPaths.len == 0:
@@ -145,7 +151,7 @@ proc registerRegenTools(server: McpServer) =
     for indexPath in indexPaths:
       try:
         let idx = readIndexFromFile(indexPath)
-        let results = findSimilarFragments(idx, query, maxResults, model)
+        let results = findSimilarFragments(idx, query, maxResults, model, exts)
         allResults.add(results)
       except Exception as e:
         warn &"Could not search index {extractFilename(indexPath)}: {e.msg}"

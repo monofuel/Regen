@@ -19,6 +19,7 @@ type
     query*: string
     maxResults*: Option[int]
     model*: Option[string]
+    extensions*: Option[seq[string]]  ## Optional list of extensions to filter by (e.g. [".nim", ".md"]) 
 
   # Simplified ripgrep-like response format
   RipgrepResponse* = object
@@ -214,6 +215,7 @@ proc handleEmbeddingSearch*(request: Request) =
     # Extract values with defaults
     let maxResults = reqData.maxResults.get(10)
     let model = reqData.model.get("Qwen/Qwen3-Embedding-0.6B-GGUF")
+    let exts = reqData.extensions.get(@[])
     
     # Find all available indexes from config
     let indexPaths = findAllIndexes()
@@ -230,7 +232,7 @@ proc handleEmbeddingSearch*(request: Request) =
     for indexPath in indexPaths:
       try:
         let index = readIndexFromFile(indexPath)
-        let results = findSimilarFragments(index, reqData.query, maxResults, model)
+        let results = findSimilarFragments(index, reqData.query, maxResults, model, exts)
         allResults.add(results)
       except Exception as e:
         # Log warning but continue with other indexes
@@ -385,6 +387,11 @@ proc buildEmbeddingSearchSpec*(): JsonNode =
                   "type": "string", 
                   "default": "Qwen/Qwen3-Embedding-0.6B-GGUF",
                   "description": "The embedding model to use for search"
+                },
+                "extensions": {
+                  "type": "array",
+                  "description": "Optional list of file extensions to include (e.g., ['.nim', '.md'])",
+                  "items": {"type": "string"}
                 }
               }
             }
