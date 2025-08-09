@@ -14,7 +14,9 @@ export types, search, index
 
 # nomic-embed-text is used for similarity search with local embeddings and ollama.
 
-# the index flatfiles will be saved at ~/.regen/{git_owner}/{git_repo}/{embedding_model_name}.flat
+
+# the index flatfiles will be saved at ~/.regen/{git_repo_name}.flat
+# TODO probably save to a more specific location like {owner}/{repo}/{embedding_model_name}.flat ?
 # multiple embedding models may be used for a single repo, and kept in separate files.
 
 ## File Fragments may or may not overlap
