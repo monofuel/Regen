@@ -1,8 +1,7 @@
 ## Regen CLI - Document fragment and AI indexing tool
 
 import
-  std/[strutils, strformat, os, algorithm],
-  jsony,
+  std/[strutils, strformat, os, algorithm, tables],
   ./types, ./configs, ./index, ./search, ./openapi, ./logs, ./mcp
 
 # flatty is used to serialize/deserialize to flat files
@@ -216,6 +215,21 @@ proc showTrackedMarkdown*() =
         let fileCount = if idx.kind == regen_folder: idx.folder.files.len else: 0
         echo &"- [x] `{folderPath}`"
         echo &"  - files: {fileCount}"
+        # Show fragment counts by algorithm
+        if idx.kind == regen_folder:
+          var counts = initTable[string, int]()
+          for f in idx.folder.files:
+            for frag in f.fragments:
+              let algo = if frag.chunkAlgorithm.len > 0: frag.chunkAlgorithm else: "unknown"
+              if counts.hasKey(algo): counts[algo] = counts[algo] + 1
+              else: counts[algo] = 1
+          if counts.len > 0:
+            echo "  - fragments by algorithm:"
+            var keys: seq[string] = @[]
+            for k in counts.keys: keys.add(k)
+            keys.sort()
+            for k in keys:
+              echo &"    - {k}: {counts[k]}"
       except:
         echo &"- [x] `{folderPath}`"
         echo &"  - files: unknown (failed to read index)"
@@ -236,6 +250,21 @@ proc showTrackedMarkdown*() =
         let fileCount = if idx.kind == regen_git_repo: idx.repo.files.len else: 0
         echo &"- [x] `{repoPath}`"
         echo &"  - files: {fileCount}"
+        # Show fragment counts by algorithm
+        if idx.kind == regen_git_repo:
+          var counts = initTable[string, int]()
+          for f in idx.repo.files:
+            for frag in f.fragments:
+              let algo = if frag.chunkAlgorithm.len > 0: frag.chunkAlgorithm else: "unknown"
+              if counts.hasKey(algo): counts[algo] = counts[algo] + 1
+              else: counts[algo] = 1
+          if counts.len > 0:
+            echo "  - fragments by algorithm:"
+            var keys: seq[string] = @[]
+            for k in counts.keys: keys.add(k)
+            keys.sort()
+            for k in keys:
+              echo &"    - {k}: {counts[k]}"
       except:
         echo &"- [x] `{repoPath}`"
         echo &"  - files: unknown (failed to read index)"

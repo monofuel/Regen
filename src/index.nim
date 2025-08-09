@@ -1,9 +1,9 @@
 ## Indexing functionality for Regen - creating and managing file indexes
 
 import
-  std/[strutils, threadpool, strformat, os, times, osproc, algorithm, sequtils],
+  std/[strutils, strformat, os, times, osproc, algorithm, sequtils],
   flatty, crunchy,
-  ./types, ./search, ./configs, ./logs
+  ./types, ./search, ./configs, ./logs, ./fragment
 
 proc writeIndexToFile*(index: RegenIndex, filepath: string) =
   ## Write a RegenIndex object to a file using flatty serialization.
@@ -52,35 +52,70 @@ proc isGitDirty*(repoPath: string): bool =
   except:
     result = true
 
-proc newRegenFragment*(content: string, filePath: string, startLine: int = 1, endLine: int = -1): RegenFragment =
-  ## Create a new RegenFragment from content.
+proc newRegenFragment*(content: string, filePath: string, startLine: int = 1, endLine: int = -1, chunkAlgorithm: string = "simple", fragmentType: string = "document"): RegenFragment =
+  ## Create a new RegenFragment from content and metadata.
   let actualEndLine = if endLine == -1: content.split('\n').len else: endLine
-  let embedding = generateEmbedding(content, loadConfig().embeddingModel)
-  
+  let cfg = loadConfig()
+  let embedding = generateEmbedding(content, cfg.embeddingModel)
+
   result = RegenFragment(
     startLine: startLine,
     endLine: actualEndLine,
     embedding: embedding,
-    fragmentType: "file",
-    model: loadConfig().embeddingModel,
+    fragmentType: fragmentType,
+    model: cfg.embeddingModel,
+    chunkAlgorithm: chunkAlgorithm,
     private: false,
-    contentScore: if content.len > 1000: 90 else: 70,
+    contentScore: (if content.len > 1000: 90 else: 70),
     hash: createFileHash(content)
   )
 
 proc newRegenFile*(filePath: string): RegenFile =
-  ## Create a new RegenFile by reading and processing the file.
+  ## Create a new RegenFile by reading and processing the file into multiple fragments.
   let content = readFile(filePath)
   let fileInfo = getFileInfo(filePath)
-  let fragment = newRegenFragment(content, filePath)
-  
+
+  # Determine fragment ranges using the fragmenting system
+  let chunks = chunkFile(filePath, content)
+
+  # Helper to extract content for a given line range (1-based inclusive)
+  let allLines = content.split('\n')
+  proc sliceContent(startLine, endLine: int): string =
+    var pieces: seq[string] = @[]
+    let startIdx = max(0, startLine - 1)
+    let endIdx = min(allLines.len - 1, endLine - 1)
+    for i in startIdx..endIdx:
+      pieces.add(allLines[i])
+    result = pieces.join("\n")
+
+  var fragments: seq[RegenFragment] = @[]
+  let fragmentType = "document"
+  for ch in chunks:
+    let fragText = sliceContent(ch.startLine, ch.endLine)
+    if fragText.len == 0:
+      continue
+    let frag = newRegenFragment(
+      content = fragText,
+      filePath = filePath,
+      startLine = ch.startLine,
+      endLine = ch.endLine,
+      chunkAlgorithm = ch.chunkAlgorithm,
+      fragmentType = fragmentType
+    )
+    fragments.add(frag)
+
+  # Fallback: if no fragments were produced (e.g., empty file), create a single empty fragment
+  if fragments.len == 0:
+    let frag = newRegenFragment("", filePath, 1, 1, chunkAlgorithm = "simple", fragmentType = fragmentType)
+    fragments.add(frag)
+
   result = RegenFile(
     path: filePath,
     filename: extractFilename(filePath),
     hash: createFileHash(content),
     creationTime: fileInfo.creationTime.toUnix().float,
     lastModified: fileInfo.lastWriteTime.toUnix().float,
-    fragments: @[fragment]
+    fragments: fragments
   )
 
 proc findProjectFiles*(rootPath: string, extensions: seq[string]): seq[string] =
@@ -96,17 +131,12 @@ proc findProjectFiles*(rootPath: string, extensions: seq[string]): seq[string] =
   result.sort()
 
 proc newRegenGitRepo*(repoPath: string, extensions: seq[string]): RegenGitRepo =
-  ## Create a new RegenGitRepo by scanning the repository in parallel.
+  ## Create a new RegenGitRepo by scanning the repository (serial to control memory).
   let filePaths = findProjectFiles(repoPath, extensions)
   
-  # Process all files in parallel
-  var fileFutures: seq[FlowVar[RegenFile]] = @[]
-  for filePath in filePaths:
-    fileFutures.add(spawn newRegenFile(filePath))
-  
   var regenFiles: seq[RegenFile] = @[]
-  for future in fileFutures:
-    regenFiles.add(^future)
+  for filePath in filePaths:
+    regenFiles.add(newRegenFile(filePath))
   
   result = RegenGitRepo(
     name: extractFilename(repoPath),
@@ -116,17 +146,12 @@ proc newRegenGitRepo*(repoPath: string, extensions: seq[string]): RegenGitRepo =
   )
 
 proc newRegenFolder*(folderPath: string, extensions: seq[string]): RegenFolder =
-  ## Create a new RegenFolder by scanning the folder in parallel.
+  ## Create a new RegenFolder by scanning the folder (serial to control memory).
   let filePaths = findProjectFiles(folderPath, extensions)
   
-  # Process all files in parallel
-  var fileFutures: seq[FlowVar[RegenFile]] = @[]
-  for filePath in filePaths:
-    fileFutures.add(spawn newRegenFile(filePath))
-  
   var regenFiles: seq[RegenFile] = @[]
-  for future in fileFutures:
-    regenFiles.add(^future)
+  for filePath in filePaths:
+    regenFiles.add(newRegenFile(filePath))
   
   result = RegenFolder(
     path: folderPath,
@@ -200,37 +225,18 @@ proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, extension
     if filesToUpdate.len > 0:
       info &"Reindexing {filesToUpdate.len} files..."
       
-      # Process files in parallel if there are many
-      if filesToUpdate.len > 3:
-        var fileFutures: seq[FlowVar[RegenFile]] = @[]
-        for filePath in filesToUpdate:
-          fileFutures.add(spawn newRegenFile(filePath))
-        
-        for future in fileFutures:
-          let newFile = ^future
-          # Replace existing or add new
-          var existingIdx = -1
-          for i, file in result.folder.files:
-            if file.path == newFile.path:
-              existingIdx = i
-              break
-          if existingIdx >= 0:
-            result.folder.files[existingIdx] = newFile
-          else:
-            result.folder.files.add(newFile)
-      else:
-        # Process serially for small numbers
-        for filePath in filesToUpdate:
-          let newFile = newRegenFile(filePath)
-          var existingIdx = -1
-          for i, file in result.folder.files:
-            if file.path == newFile.path:
-              existingIdx = i
-              break
-          if existingIdx >= 0:
-            result.folder.files[existingIdx] = newFile
-          else:
-            result.folder.files.add(newFile)
+      # Process serially to limit memory usage
+      for filePath in filesToUpdate:
+        let newFile = newRegenFile(filePath)
+        var existingIdx = -1
+        for i, file in result.folder.files:
+          if file.path == newFile.path:
+            existingIdx = i
+            break
+        if existingIdx >= 0:
+          result.folder.files[existingIdx] = newFile
+        else:
+          result.folder.files.add(newFile)
   
   of regen_git_repo:
     # Update git-specific info
@@ -263,37 +269,18 @@ proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, extension
     if filesToUpdate.len > 0:
       info &"Reindexing {filesToUpdate.len} files..."
       
-      # Process files in parallel if there are many
-      if filesToUpdate.len > 3:
-        var fileFutures: seq[FlowVar[RegenFile]] = @[]
-        for filePath in filesToUpdate:
-          fileFutures.add(spawn newRegenFile(filePath))
-        
-        for future in fileFutures:
-          let newFile = ^future
-          # Replace existing or add new
-          var existingIdx = -1
-          for i, file in result.repo.files:
-            if file.path == newFile.path:
-              existingIdx = i
-              break
-          if existingIdx >= 0:
-            result.repo.files[existingIdx] = newFile
-          else:
-            result.repo.files.add(newFile)
-      else:
-        # Process serially for small numbers
-        for filePath in filesToUpdate:
-          let newFile = newRegenFile(filePath)
-          var existingIdx = -1
-          for i, file in result.repo.files:
-            if file.path == newFile.path:
-              existingIdx = i
-              break
-          if existingIdx >= 0:
-            result.repo.files[existingIdx] = newFile
-          else:
-            result.repo.files.add(newFile)
+      # Process serially to limit memory usage
+      for filePath in filesToUpdate:
+        let newFile = newRegenFile(filePath)
+        var existingIdx = -1
+        for i, file in result.repo.files:
+          if file.path == newFile.path:
+            existingIdx = i
+            break
+        if existingIdx >= 0:
+          result.repo.files[existingIdx] = newFile
+        else:
+          result.repo.files.add(newFile)
   
   if filesToUpdate.len == 0 and filesToRemove.len == 0:
     info "No changes detected"

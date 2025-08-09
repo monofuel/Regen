@@ -26,6 +26,7 @@ type
     embedding*: seq[float32]
     fragmentType*: string
     model*: string
+    chunkAlgorithm*: string
     private*: bool
     contentScore*: int
     hash*: string
