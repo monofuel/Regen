@@ -1,6 +1,6 @@
 import
   unittest,
-  ../src/regen
+  regen
 
 from std/os import fileExists, removeFile
 

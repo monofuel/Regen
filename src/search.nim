@@ -6,8 +6,8 @@ import
   ./types, ./configs
 
 const
-  # SimilarityEmbeddingModel* = "nomic-embed-text"
-  SimilarityEmbeddingModel* = "Qwen/Qwen3-Embedding-0.6B-GGUF"
+  SimilarityEmbeddingModel* = "nomic-embed-text"
+  #SimilarityEmbeddingModel* = "Qwen/Qwen3-Embedding-0.6B-GGUF"
   MaxInFlight* = 10
 
 var localOllamaApi*: OpenAiApi

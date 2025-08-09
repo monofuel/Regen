@@ -4,6 +4,8 @@ import
   std/[strutils, strformat, os, algorithm, tables],
   ./types, ./configs, ./index, ./search, ./openapi, ./logs, ./mcp
 
+export types, search, index
+
 # flatty is used to serialize/deserialize to flat files
 # top level organization is a git repo, eg monofuel/fragg or monolab/racha
 # each repo has many files

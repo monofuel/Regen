@@ -1,6 +1,6 @@
 import
   std/[strformat, os, parseopt],
-  ../src/regen
+  regen
 
 # Parse command line arguments
 var updateGold = false
