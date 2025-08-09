@@ -1,6 +1,6 @@
 # Regen 🗃️
 
-![why wouldn't you want a miqo'te reading all your documents and indexing everything](static/ComfyUI_00126_.png)
+![Library](static/ComfyUI_00126_.png "why wouldn't you want a miqo'te reading all your documents and indexing everything")
 
 📚 **A fast, lightweight document indexing tool that loads files, chunks them, and indexes with embeddings**
 
