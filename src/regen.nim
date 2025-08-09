@@ -3,10 +3,7 @@
 import
   std/[strutils, strformat, os, algorithm],
   jsony,
-  ./types, ./configs, ./index, ./search, ./openapi, ./logs
-
-# re-export our internal modules for convenience
-export types, configs, index, search, openapi
+  ./types, ./configs, ./index, ./search, ./openapi, ./logs, ./mcp
 
 # flatty is used to serialize/deserialize to flat files
 # top level organization is a git repo, eg monofuel/fragg or monolab/racha
@@ -37,6 +34,7 @@ proc printHelp*() =
   info ""
   info "Server Commands:"
   info "  --server [port] [address]   Start OpenAPI server (default: 8080, localhost)"
+  info "  --mcp-server [port] [address] Start MCP HTTP server (default: 8096, 0.0.0.0)"
   info ""
   info "Search Commands:"
   info "  -r, --ripgrep-search <pattern> [options]"
@@ -244,6 +242,8 @@ proc main() =
     indexAll()
   of "--server":
     startApiServer(args)
+  of "--mcp-server":
+    startMcpHttpServer(args)
   of "-r", "--ripgrep-search":
     performRipgrepSearch(args)
   of "-e", "--embedding-search":
