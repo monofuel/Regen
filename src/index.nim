@@ -153,7 +153,7 @@ proc newRegenGitRepo*(repoPath: string, whitelist: seq[string], blacklist: seq[s
     files: regenFiles
   )
 
-proc newRegenFolder*(folderPath: string, whitelist: seq[string], blacklist: seq[string]): RegenFolder =
+proc newRegenFolder*(folderPath: string, whitelist: seq[string] = @[], blacklist: seq[string] = @[]): RegenFolder =
   ## Create a new RegenFolder by scanning the folder (serial to control memory).
   let filePaths = findProjectFiles(folderPath, whitelist, blacklist)
   

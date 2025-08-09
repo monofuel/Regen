@@ -1,12 +1,13 @@
-import unittest, strutils
-import ../src/regen
+import
+  unittest, strutils,
+  regen
 
 suite "Ripgrep Search Tests":
   var index: RegenIndex
   
   setup:
     # Create an index of the test files
-    index = newRegenIndex(regen_folder, "tests/testfiles", @[".nim", ".txt"])
+    index = newRegenIndex(regen_folder, "tests/testfiles", @[".nim", ".txt"], @[])
   
   test "Basic pattern search":
     let results = ripgrepSearch(index, "hello")
