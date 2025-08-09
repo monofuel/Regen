@@ -5,6 +5,50 @@ import
   flatty, crunchy,
   ./types, ./search, ./configs, ./logs, ./fragment
 
+const RegenFileIndexVersion* = 5
+
+proc getIndexFormatPath(): string =
+  ## Path to the standalone index format version file.
+  let regenDir = getHomeDir() / ".regen"
+  if not dirExists(regenDir):
+    createDir(regenDir)
+  result = regenDir / "INDEX_FORMAT"
+
+proc purgeAllIndexFiles() =
+  ## Delete all persisted index flat files.
+  let regenDir = getHomeDir() / ".regen"
+  let foldersDir = regenDir / "folders"
+  if dirExists(foldersDir):
+    for file in walkDir(foldersDir):
+      if file.kind == pcFile and file.path.endsWith(".flat"):
+        try: removeFile(file.path) except: discard
+  let reposDir = regenDir / "repos"
+  if dirExists(reposDir):
+    for file in walkDir(reposDir):
+      if file.kind == pcFile and file.path.endsWith(".flat"):
+        try: removeFile(file.path) except: discard
+
+proc ensureIndexFormatUpToDate*(): bool =
+  ## Ensure on-disk index files match current format version.
+  ## Returns true if format already matched; false if a purge was performed.
+  let fmtPath = getIndexFormatPath()
+  if fileExists(fmtPath):
+    var existing = -1
+    try:
+      existing = parseInt(readFile(fmtPath).strip())
+    except:
+      existing = -1
+    if existing != RegenFileIndexVersion:
+      warn "Index format changed. Purging existing index files and requiring reindex..."
+      purgeAllIndexFiles()
+      writeFile(fmtPath, $RegenFileIndexVersion)
+      return false
+    return true
+  else:
+    # First run: establish the current format version file
+    writeFile(fmtPath, $RegenFileIndexVersion)
+    return true
+
 proc writeIndexToFile*(index: RegenIndex, filepath: string) =
   ## Write a RegenIndex object to a file using flatty serialization.
   let data = toFlatty(index)
@@ -12,6 +56,7 @@ proc writeIndexToFile*(index: RegenIndex, filepath: string) =
 
 proc readIndexFromFile*(filepath: string): RegenIndex =
   ## Read a RegenIndex object from a file using flatty deserialization.
+  discard ensureIndexFormatUpToDate()
   let data = readFile(filepath)
   fromFlatty(data, RegenIndex)
 
@@ -295,6 +340,7 @@ proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, whitelist
 
 proc indexAll*() =
   ## Index all configured folders and git repositories with intelligent incremental updates.
+  let _ = ensureIndexFormatUpToDate()
   let config = loadConfig()
   
   let whitelist = if config.whitelistExtensions.len > 0: config.whitelistExtensions else: config.extensions

@@ -16,38 +16,47 @@
 
 - [ ] support query - document embeddings in addition to similarity search
 - [x] 🌐 OpenAPI server interface
-- [ ] 🔌 MCP (Model Context Protocol) server support
+- [x] 🔌 MCP (Model Context Protocol) server support
 
-## 🛠️ Usage
+## ⚡ Quick start
 
-### Running Tests
+### 1) Configure indexing
+- Add paths to track:
+  - Folders: `regen --add-folder-index /path/to/folder`
+  - Git repos: `regen --add-repo-index /path/to/repo`
+- Build indexes: `regen --index-all`
+
+Notes:
+- Config lives at `~/.regen/config.json` and is created on first run.
+- An API key is generated automatically. View it with: `regen --show-api-key`
+
+### 2) Start a server
+- OpenAPI server (HTTP):
+  - Start: `regen --server [port] [address]`
+  - Defaults: port 8095, address `0.0.0.0`
+- MCP server (HTTP):
+  - Start: `regen --mcp-server [port] [address]`
+  - Defaults: port 8096, address `0.0.0.0`
+
+Authentication:
+- Protected endpoints/tools require `Authorization: Bearer <API_KEY>` where `<API_KEY>` is from `regen --show-api-key`.
+
+### 3) Tools (available via both OpenAPI and MCP)
+- ripgrep_search: keyword/regex search across all configured indexes
+  - Inputs: `pattern` (string), `caseSensitive` (bool, default true), `maxResults` (int, default 100)
+- embedding_search: semantic similarity search using embeddings
+  - Inputs: `query` (string), `maxResults` (int, default 10), `model` (string, defaults to configured model), `extensions` (optional seq of file extensions)
+
+HTTP endpoints (OpenAPI server):
+- Health: `GET /` (no auth)
+- OpenAPI spec: `GET /openapi.json` (no auth)
+- Ripgrep: `POST /search/ripgrep` (Bearer auth)
+- Embedding: `POST /search/embedding` (Bearer auth)
+
+Example (ripgrep over HTTP):
 ```bash
-nimble test
-```
-
-### Running Benchmarks
-```bash
-nimble benchmark
-```
-
-Benchmarks cover file discovery, SHA-256 hashing, fragment creation, embedding generation, and full repository indexing.
-
-## 📖 Key Functions
-
-### `newRegenIndex(indexType, path, extensions)`
-Creates a new index for a git repo or folder:
-```nim
-let index = newRegenIndex(regen_git_repo, "/path/to/repo", @[".nim", ".md"])
-```
-
-### `findSimilarFragments(index, queryText, maxResults)`
-Searches for similar content using cosine similarity:
-```nim
-let results = findSimilarFragments(index, "authentication code", 5)
-```
-
-### `generateEmbedding(text, model)`
-Generates embeddings for text using Ollama:
-```nim
-let embedding = generateEmbedding("some text", "nomic-embed-text")
+curl -H "Authorization: Bearer $(regen --show-api-key | sed -n 's/API Key: //p')" \
+     -H "Content-Type: application/json" \
+     -d '{"pattern":"TODO","caseSensitive":true,"maxResults":50}' \
+     http://localhost:8095/search/ripgrep
 ```
