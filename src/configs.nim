@@ -3,7 +3,7 @@
 import
   std/[strutils, strformat, os, random],
   jsony,
-  ./types, ./search, ./logs
+  ./types, ./logs
 
 const
   ConfigVersion* = "0.1.0"

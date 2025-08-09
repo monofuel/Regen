@@ -109,7 +109,10 @@ proc registerRegenTools(server: McpServer) =
         "match_end": r.matchEnd
       })
 
-    %*{"matches": matches}
+    # MCP core expects tool handlers to return a JSON string node.
+    # Build the structured result and stringify it.
+    let resultObj = %*{"matches": matches}
+    return %*($resultObj)
 
   server.registerTool(ripgrepTool, ripgrepHandler)
 
@@ -121,6 +124,7 @@ proc registerRegenTools(server: McpServer) =
   )
 
   proc embeddingHandler(arguments: JsonNode): JsonNode {.gcsafe.} =
+    let config = loadConfig()
     let hasQuery = arguments.hasKey("query") and arguments["query"].kind == JString
     if not hasQuery:
       raise newException(CatchableError, "'query' is required and must be a string")
@@ -131,7 +135,7 @@ proc registerRegenTools(server: McpServer) =
         maxResults = arguments["maxResults"].getInt()
       except:
         discard
-    let model = if arguments.hasKey("model"): arguments["model"].getStr() else: "Qwen/Qwen3-Embedding-0.6B-GGUF"
+    let model = if arguments.hasKey("model"): arguments["model"].getStr() else: config.embeddingModel
 
     let indexPaths = findAllIndexes()
     if indexPaths.len == 0:
@@ -171,10 +175,13 @@ proc registerRegenTools(server: McpServer) =
         "lines": lines
       })
 
-    %*{
+    # MCP core expects tool handlers to return a JSON string node.
+    # Build the structured result and stringify it.
+    let resultObj = %*{
       "results": apiResults,
       "totalResults": apiResults.len
     }
+    return %*($resultObj)
 
   server.registerTool(embeddingTool, embeddingHandler)
 
