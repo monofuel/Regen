@@ -14,11 +14,15 @@
 
 ## 📋 TODO
 
-- [ ] support query - document embeddings in addition to similarity search
 - [x] 🌐 OpenAPI server interface
 - [x] 🔌 MCP (Model Context Protocol) server support
+- [ ] implement CORS configuration
+- [ ] support query - document embeddings in addition to similarity search
+- [ ] properly support multiple embedding models (currently only supports 1 in config json)
 
 ## ⚡ Quick start
+
+- ensure you have `ripgrep` installed locally!
 
 ### 1) Configure indexing
 - Add paths to track:
