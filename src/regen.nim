@@ -29,8 +29,8 @@ proc printHelp*() =
   info "Usage: regen <command> [options]"
   info ""
   info "Configuration Commands:"
-  info "  --add-folder-index <path>   Add folder to tracking config"
-  info "  --add-repo-index <path>     Add git repository to tracking config"
+  info "  --add-folder-index <path> [--dry-run]   Add folder to tracking config (or list files)"
+  info "  --add-repo-index <path> [--dry-run]     Add git repository to tracking config (or list files)"
   info "  --show-config               Show current configuration"
   info "  --show-api-key              Show API key for Bearer authentication"
   info "  --show-indexes              Show tracked folders/repos as Markdown"
@@ -327,13 +327,50 @@ proc main() =
       error "--add-folder-index requires a path argument"
       printHelp()
       return
-    addFolderToConfig(args[1])
+    let path = args[1]
+    var dryRun = false
+    for i in 2..<args.len:
+      if args[i] == "--dry-run":
+        dryRun = true
+    if dryRun:
+      if not dirExists(path):
+        error &"Directory does not exist: {path}"
+        return
+      let absPath = expandFilename(path)
+      let config = loadConfig()
+      let whitelist = if config.whitelistExtensions.len > 0: config.whitelistExtensions else: config.extensions
+      let files = findProjectFiles(absPath, whitelist, config.blacklistExtensions, config.blacklistFilenames)
+      info &"Dry run: {files.len} files would be indexed from folder: {absPath}"
+      for f in files:
+        echo f
+      return
+    addFolderToConfig(path)
   of "--add-repo-index":
     if args.len < 2:
       error "--add-repo-index requires a path argument"
       printHelp()
       return
-    addGitRepoToConfig(args[1])
+    let path = args[1]
+    var dryRun = false
+    for i in 2..<args.len:
+      if args[i] == "--dry-run":
+        dryRun = true
+    if dryRun:
+      if not dirExists(path):
+        error &"Directory does not exist: {path}"
+        return
+      let absPath = expandFilename(path)
+      if not dirExists(absPath / ".git"):
+        error &"{absPath} is not a git repository"
+        return
+      let config = loadConfig()
+      let whitelist = if config.whitelistExtensions.len > 0: config.whitelistExtensions else: config.extensions
+      let files = findProjectFiles(absPath, whitelist, config.blacklistExtensions, config.blacklistFilenames)
+      info &"Dry run: {files.len} files would be indexed from git repo: {absPath}"
+      for f in files:
+        echo f
+      return
+    addGitRepoToConfig(path)
   of "--show-config":
     showConfig()
   of "--show-api-key":
