@@ -203,8 +203,10 @@ suite "Regen Search API Tests":
                                headers = authHeaders,
                                body = "{invalid json")
     
-    # TODO wtf why 500
-    check response.code == 500  # Will be caught by general exception handler
+    check response.code == 400
+    let errorResponse = fromJson(response.body, ErrorResponse)
+    check errorResponse.code == 400
+    check errorResponse.error.startsWith("Invalid JSON:")
 
   test "Embedding search with valid request":
     ## Test embedding search endpoint with valid request and test index.

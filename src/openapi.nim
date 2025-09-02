@@ -190,6 +190,11 @@ proc handleRipgrepSearch*(request: Request) =
     
     request.respond(200, headers, body = response.toJson())
     
+  except jsony.JsonError as e:
+    request.respond(400, headers, body = ErrorResponse(
+      error: "Invalid JSON: " & e.msg,
+      code: 400
+    ).toJson())
   except Exception as e:
     request.respond(500, headers, body = ErrorResponse(
       error: "Error: " & e.msg,
@@ -254,6 +259,11 @@ proc handleEmbeddingSearch*(request: Request) =
     
     request.respond(200, headers, body = response.toJson())
     
+  except jsony.JsonError as e:
+    request.respond(400, headers, body = ErrorResponse(
+      error: "Invalid JSON: " & e.msg,
+      code: 400
+    ).toJson())
   except Exception as e:
     request.respond(500, headers, body = ErrorResponse(
       error: "Error: " & e.msg,
