@@ -17,7 +17,9 @@ const
     ".env", ".env.*", ".env.local", ".env.development", ".env.production", ".env.test", ".env.ci",
     ".envrc", ".npmrc", ".pypirc", ".netrc", ".htpasswd", ".pgpass",
     "id_rsa", "id_ecdsa", "id_ed25519", ".dockerconfigjson",
-    "terraform.tfstate", "terraform.tfstate.backup"
+    "terraform.tfstate", "terraform.tfstate.backup",
+    ".git", ".stfolder", ".trash", ".terraform", ".DS_Store",
+    "node_modules",
   ]
 
 proc generateApiKey*(): string =
