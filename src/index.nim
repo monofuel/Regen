@@ -5,7 +5,7 @@ import
   flatty, crunchy,
   ./types, ./search, ./configs, ./logs, ./fragment
 
-const RegenFileIndexVersion* = 7
+const RegenFileIndexVersion* = 8
 
 proc getIndexFormatPath(): string =
   ## Path to the standalone index format version file.
@@ -221,6 +221,7 @@ proc newRegenGitRepo*(repoPath: string, whitelist: seq[string], blacklistExtensi
     regenFiles[rf.path] = rf
   
   result = RegenGitRepo(
+    path: repoPath,
     name: extractFilename(repoPath),
     latestCommitHash: getGitCommitHash(repoPath),
     isDirty: isGitDirty(repoPath),

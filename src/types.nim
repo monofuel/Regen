@@ -48,6 +48,7 @@ type
 
   RegenGitRepo* = object
     ## indexing a git repo for a specific commit
+    path*: string
     name*: string
     latestCommitHash*: string
     isDirty*: bool # does data match the latest commit?

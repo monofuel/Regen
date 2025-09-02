@@ -58,6 +58,7 @@ proc createTestData(): RegenIndex =
   )
   
   let testRepo = RegenGitRepo(
+    path: "/",
     name: "test-repo",
     latestCommitHash: "abc123def456",
     isDirty: false,
@@ -125,13 +126,13 @@ if tmpContent == goldContent:
     deserializedFromGold.repo.name == testIndex.repo.name and
     deserializedFromGold.repo.latestCommitHash == testIndex.repo.latestCommitHash and
     deserializedFromGold.repo.files.len == testIndex.repo.files.len and
-    deserializedFromGold.repo.files[0].fragments.len == testIndex.repo.files[0].fragments.len and
-    deserializedFromGold.repo.files[0].fragments[0].embedding.len == testIndex.repo.files[0].fragments[0].embedding.len
+    deserializedFromGold.repo.files["/src/main.nim"].fragments.len == testIndex.repo.files["/src/main.nim"].fragments.len and
+    deserializedFromGold.repo.files["/src/main.nim"].fragments[0].embedding.len == testIndex.repo.files["/src/main.nim"].fragments[0].embedding.len
   )
   
   if testMatches:
     echo "✅ Deserialization verification: PASS"
-    echo &"✅ Embedding dimensions: {deserializedFromGold.repo.files[0].fragments[0].embedding.len}"
+    echo &"✅ Embedding dimensions: {deserializedFromGold.repo.files[\"/src/main.nim\"].fragments[0].embedding.len}"
   else:
     echo "❌ Deserialization verification: FAIL"
     quit(1)

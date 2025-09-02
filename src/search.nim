@@ -114,20 +114,7 @@ proc ripgrepSearch*(index: RegenIndex, pattern: string, caseSensitive: bool = tr
   # Get the search directory based on index type
   let searchPath = case index.kind
     of regen_git_repo:
-      # TODO why is this so dumb? the path should just be on the index
-      # Find the common root directory of all files (should be the repo root)
-      if index.repo.files.len > 0:
-        var firstPath = ""
-        for _, f in index.repo.files.pairs:
-          firstPath = f.path
-          break
-        var commonRoot = firstPath.parentDir()
-        # Keep going up until we find a directory that contains .git or is the root
-        while not dirExists(commonRoot / ".git") and commonRoot != "/" and commonRoot.len > 1:
-          commonRoot = commonRoot.parentDir()
-        commonRoot
-      else: 
-        "."
+      index.repo.path
     of regen_folder:
       index.folder.path
   

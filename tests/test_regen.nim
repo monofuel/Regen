@@ -52,6 +52,7 @@ suite "RegenIndex serialization tests":
     
     # Create test repo
     let testRepo = RegenGitRepo(
+      path: "/",
       name: "test-repo",
       latestCommitHash: "abc123def456",
       isDirty: false,
@@ -98,12 +99,12 @@ suite "RegenIndex serialization tests":
     check loadedIndex.repo.files["/src/main.nim"].fragments.len == 2
     
     # Verify first fragment - including the embedding
-    check loadedIndex.repo.files[0].fragments[0].startLine == fragment1.startLine
-    check loadedIndex.repo.files[0].fragments[0].endLine == fragment1.endLine
-    check loadedIndex.repo.files[0].fragments[0].fragmentType == fragment1.fragmentType
-    check loadedIndex.repo.files[0].fragments[0].model == fragment1.model
-    check loadedIndex.repo.files[0].fragments[0].embedding.len == fragment1.embedding.len
-    check loadedIndex.repo.files[0].fragments[0].embedding == fragment1.embedding
+    check loadedIndex.repo.files["/src/main.nim"].fragments[0].startLine == fragment1.startLine
+    check loadedIndex.repo.files["/src/main.nim"].fragments[0].endLine == fragment1.endLine
+    check loadedIndex.repo.files["/src/main.nim"].fragments[0].fragmentType == fragment1.fragmentType
+    check loadedIndex.repo.files["/src/main.nim"].fragments[0].model == fragment1.model
+    check loadedIndex.repo.files["/src/main.nim"].fragments[0].embedding.len == fragment1.embedding.len
+    check loadedIndex.repo.files["/src/main.nim"].fragments[0].embedding == fragment1.embedding
     
     # Verify second file (empty)
     check loadedIndex.repo.files.hasKey("/src/utils.nim")
@@ -247,6 +248,7 @@ suite "Similarity search tests":
     
     # Create test repo
     let testRepo = RegenGitRepo(
+      path: "/",
       name: "test-repo",
       latestCommitHash: "abc123def456",
       isDirty: false,
@@ -306,7 +308,9 @@ suite "Similarity search tests":
     
     let testFolder = RegenFolder(
       path: "/docs",
-      files: @[testFile]
+      files: {
+        "/docs/readme.md": testFile
+      }.toTable
     )
     
     let testIndex = RegenIndex(

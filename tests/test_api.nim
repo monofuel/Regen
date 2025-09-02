@@ -1,5 +1,5 @@
 import
-  std/[unittest, strformat, strutils, os, osproc, options],
+  std/[unittest, strformat, strutils, os, osproc, options, tables],
   jsony, openapi, regen, curly
 
 ## Test suite for the Regen Search API endpoints.
@@ -70,31 +70,34 @@ suite "Regen Search API Tests":
     testIndexPath = foldersDir / "test_index.flat"
     
     # Create test files in memory for the index
+    var filesTable = initTable[string, RegenFile]()
+    let testFile = RegenFile(
+      path: "test.nim",
+      filename: "test.nim", 
+      hash: "hash123",
+      creationTime: 0.0,
+      lastModified: 0.0,
+      fragments: @[
+        RegenFragment(
+          startLine: 1,
+          endLine: 10,
+          embedding: @[0.1'f32, 0.2, 0.3, 0.4, 0.5],
+          fragmentType: "file",
+          model: SimilarityEmbeddingModel,
+          private: false,
+          contentScore: 80,
+          hash: "fragment123"
+        )
+      ]
+    )
+    filesTable[testFile.path] = testFile
+
     let testRepo = RegenGitRepo(
+      path: getCurrentDir(),
       name: "test_repo",
       latestCommitHash: "abc123",
       isDirty: false,
-      files: @[
-        RegenFile(
-          path: "test.nim",
-          filename: "test.nim", 
-          hash: "hash123",
-          creationTime: 0.0,
-          lastModified: 0.0,
-          fragments: @[
-            RegenFragment(
-              startLine: 1,
-              endLine: 10,
-              embedding: @[0.1'f32, 0.2, 0.3, 0.4, 0.5],
-              fragmentType: "file",
-              model: SimilarityEmbeddingModel,
-              private: false,
-              contentScore: 80,
-              hash: "fragment123"
-            )
-          ]
-        )
-      ]
+      files: filesTable
     )
     
     let testIndex = RegenIndex(
@@ -200,6 +203,7 @@ suite "Regen Search API Tests":
                                headers = authHeaders,
                                body = "{invalid json")
     
+    # TODO wtf why 500
     check response.code == 500  # Will be caught by general exception handler
 
   test "Embedding search with valid request":
@@ -215,16 +219,17 @@ suite "Regen Search API Tests":
                                headers = authHeaders,
                                body = request.toJson())
     
-    # Accept either success or 500 (service unavailable)
-    check response.code in [200, 500]
+    # Accept either success or 400 (no indexes configured)
+    check response.code in [200, 400]
     
     if response.code == 200:
       let embeddingResponse = fromJson(response.body, EmbeddingSearchResponse)
       check embeddingResponse.results.len >= 0
       check embeddingResponse.totalResults >= 0
     else:
-      # 500 expected when embedding service is not available
+      # 400 expected when no indexes are available
       let errorResponse = fromJson(response.body, ErrorResponse)
+      check errorResponse.code == 400
       check errorResponse.error.len > 0
 
 
