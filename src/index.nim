@@ -1,11 +1,11 @@
 ## Indexing functionality for Regen - creating and managing file indexes
 
 import
-  std/[strutils, strformat, os, times, osproc, algorithm, sequtils],
+  std/[strutils, strformat, os, times, osproc, algorithm, sequtils, tables],
   flatty, crunchy,
   ./types, ./search, ./configs, ./logs, ./fragment
 
-const RegenFileIndexVersion* = 6
+const RegenFileIndexVersion* = 7
 
 proc getIndexFormatPath(): string =
   ## Path to the standalone index format version file.
@@ -215,9 +215,10 @@ proc newRegenGitRepo*(repoPath: string, whitelist: seq[string], blacklistExtensi
   ## Create a new RegenGitRepo by scanning the repository (serial to control memory).
   let filePaths = findProjectFiles(repoPath, whitelist, blacklistExtensions, blacklistFilenames)
   
-  var regenFiles: seq[RegenFile] = @[]
+  var regenFiles = initTable[string, RegenFile]()
   for filePath in filePaths:
-    regenFiles.add(newRegenFile(filePath))
+    let rf = newRegenFile(filePath)
+    regenFiles[rf.path] = rf
   
   result = RegenGitRepo(
     name: extractFilename(repoPath),
@@ -230,9 +231,10 @@ proc newRegenFolder*(folderPath: string, whitelist: seq[string] = @[], blacklist
   ## Create a new RegenFolder by scanning the folder (serial to control memory).
   let filePaths = findProjectFiles(folderPath, whitelist, blacklistExtensions, blacklistFilenames)
   
-  var regenFiles: seq[RegenFile] = @[]
+  var regenFiles = initTable[string, RegenFile]()
   for filePath in filePaths:
-    regenFiles.add(newRegenFile(filePath))
+    let rf = newRegenFile(filePath)
+    regenFiles[rf.path] = rf
   
   result = RegenFolder(
     path: folderPath,
@@ -286,31 +288,30 @@ proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, whitelist
   info "Checking for changes..."
   let currentFiles = findProjectFiles(currentPath, whitelist, blacklistExtensions, blacklistFilenames)
   var filesToUpdate: seq[string] = @[]
-  var filesToRemove: seq[int] = @[]
+  var filesToRemove: seq[string] = @[]
   
   case updated.kind:
   of regen_folder:
     # Check existing files for changes
-    for i, existingFile in updated.folder.files:
-      if existingFile.path notin currentFiles:
+    for path, existingFile in updated.folder.files.pairs:
+      if path notin currentFiles:
         # File was deleted
-        filesToRemove.add(i)
+        filesToRemove.add(path)
         info &"    - Removed: {existingFile.filename}"
-      elif needsReindexing(existingFile, existingFile.path):
+      elif needsReindexing(existingFile, path):
         # File was modified
-        filesToUpdate.add(existingFile.path)
+        filesToUpdate.add(path)
         info &"    - Modified: {existingFile.filename}"
     
     # Check for new files
     for currentFile in currentFiles:
-      let existsInIndex = updated.folder.files.anyIt(it.path == currentFile)
-      if not existsInIndex:
+      if not updated.folder.files.hasKey(currentFile):
         filesToUpdate.add(currentFile)
         info &"    - New: {extractFilename(currentFile)}"
     
-    # Remove deleted files (in reverse order to maintain indices)
-    for i in countdown(filesToRemove.len - 1, 0):
-      updated.folder.files.delete(filesToRemove[i])
+    # Remove deleted files
+    for path in filesToRemove:
+      updated.folder.files.del(path)
     
     # Update/add changed files
     if filesToUpdate.len > 0:
@@ -319,42 +320,33 @@ proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, whitelist
       # Process serially to limit memory usage
       for filePath in filesToUpdate:
         let newFile = newRegenFile(filePath)
-        var existingIdx = -1
-        for i, file in updated.folder.files:
-          if file.path == newFile.path:
-            existingIdx = i
-            break
-        if existingIdx >= 0:
-          updated.folder.files[existingIdx] = newFile
-        else:
-          updated.folder.files.add(newFile)
+        updated.folder.files[filePath] = newFile
   
   of regen_git_repo:
     # Update git-specific info
     updated.repo.latestCommitHash = getGitCommitHash(currentPath)
     updated.repo.isDirty = isGitDirty(currentPath)
-    
     # Check existing files for changes
-    for i, existingFile in updated.repo.files:
-      if existingFile.path notin currentFiles:
+    for path, existingFile in updated.repo.files.pairs:
+      if path notin currentFiles:
         # File was deleted
-        filesToRemove.add(i)
+        filesToRemove.add(path)
         info &"    - Removed: {existingFile.filename}"
-      elif needsReindexing(existingFile, existingFile.path):
+      elif needsReindexing(existingFile, path):
         # File was modified
-        filesToUpdate.add(existingFile.path)
+        filesToUpdate.add(path)
         info &"    - Modified: {existingFile.filename}"
     
+
     # Check for new files
     for currentFile in currentFiles:
-      let existsInIndex = updated.repo.files.anyIt(it.path == currentFile)
-      if not existsInIndex:
+      if not updated.repo.files.hasKey(currentFile):
         filesToUpdate.add(currentFile)
         info &"    - New: {extractFilename(currentFile)}"
     
-    # Remove deleted files (in reverse order to maintain indices)
-    for i in countdown(filesToRemove.len - 1, 0):
-      updated.repo.files.delete(filesToRemove[i])
+    # Remove deleted files
+    for path in filesToRemove:
+      updated.repo.files.del(path)
     
     # Update/add changed files
     if filesToUpdate.len > 0:
@@ -363,16 +355,7 @@ proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, whitelist
       # Process serially to limit memory usage
       for filePath in filesToUpdate:
         let newFile = newRegenFile(filePath)
-        var existingIdx = -1
-        for i, file in updated.repo.files:
-          if file.path == newFile.path:
-            existingIdx = i
-            break
-        if existingIdx >= 0:
-          updated.repo.files[existingIdx] = newFile
-        else:
-          updated.repo.files.add(newFile)
-  
+        updated.repo.files[filePath] = newFile
   let hasChanges = not (filesToUpdate.len == 0 and filesToRemove.len == 0)
   if not hasChanges:
     info "No changes detected"

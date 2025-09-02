@@ -1,5 +1,5 @@
 import
-  std/[strformat, os, parseopt],
+  std/[strformat, os, parseopt, tables],
   regen
 
 # Parse command line arguments
@@ -61,7 +61,10 @@ proc createTestData(): RegenIndex =
     name: "test-repo",
     latestCommitHash: "abc123def456",
     isDirty: false,
-    files: @[file1, file2]
+    files: {
+      "/src/main.nim": file1,
+      "/src/utils.nim": file2
+    }.toTable
   )
   
   result = RegenIndex(

@@ -1,4 +1,5 @@
 ## Shared types for Regen indexing and search functionality
+import std/tables
 
 const
   #DefaultEmbeddingModel* = "Qwen/Qwen3-Embedding-0.6B-GGUF"
@@ -50,12 +51,12 @@ type
     name*: string
     latestCommitHash*: string
     isDirty*: bool # does data match the latest commit?
-    files*: seq[RegenFile]
+    files*: Table[string, RegenFile]
 
   RegenFolder* = object
     ## indexing a specific folder on the local disk
     path*: string
-    files*: seq[RegenFile]
+    files*: Table[string, RegenFile]
 
   RegenIndex* = object
     ## a top level wrapper for a regen index.

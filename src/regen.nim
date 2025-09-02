@@ -223,7 +223,7 @@ proc showTrackedMarkdown*() =
         # Show fragment counts by algorithm
         if idx.kind == regen_folder:
           var counts = initTable[string, int]()
-          for f in idx.folder.files:
+          for _, f in idx.folder.files.pairs:
             for frag in f.fragments:
               let algo = if frag.chunkAlgorithm.len > 0: frag.chunkAlgorithm else: "unknown"
               if counts.hasKey(algo): counts[algo] = counts[algo] + 1
@@ -258,7 +258,7 @@ proc showTrackedMarkdown*() =
         # Show fragment counts by algorithm
         if idx.kind == regen_git_repo:
           var counts = initTable[string, int]()
-          for f in idx.repo.files:
+          for _, f in idx.repo.files.pairs:
             for frag in f.fragments:
               let algo = if frag.chunkAlgorithm.len > 0: frag.chunkAlgorithm else: "unknown"
               if counts.hasKey(algo): counts[algo] = counts[algo] + 1

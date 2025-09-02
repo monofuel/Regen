@@ -18,6 +18,12 @@
 - DO NOT use `echo` for debugging, use our logging functions to make it easier to selectively mute debug logs.
 - only use `echo` for intentional application output (eg: ripgrep output)
 
+## Indexing and types
+
+- indexes are stored as flat files
+- ANY changes made to types require that you bump RegenFileIndexVersion in index.nim
+- otherwise, the program will attempt to deserialize old index files and fail.
+
 ## Nim best practices
 
 **Prefer letting errors bubble up naturally** - Nim's stack traces are excellent for debugging:

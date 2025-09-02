@@ -1,7 +1,7 @@
 ## Search functionality for Regen - ripgrep and embedding search
 
 import
-  std/[strutils, os, osproc, json, algorithm, math],
+  std/[strutils, os, osproc, json, algorithm, math, tables],
   openai_leap,
   ./types, ./configs
 
@@ -70,7 +70,7 @@ proc findSimilarFragments*(index: RegenIndex, queryText: string, maxResults: int
   # Collect all fragments with their similarity scores
   case index.kind
   of regen_git_repo:
-    for file in index.repo.files:
+    for _, file in index.repo.files.pairs:
       if not extAllowed(file.path, allowedExtensions):
         continue
       for fragment in file.fragments:
@@ -82,7 +82,7 @@ proc findSimilarFragments*(index: RegenIndex, queryText: string, maxResults: int
             similarity: similarity
           ))
   of regen_folder:
-    for file in index.folder.files:
+    for _, file in index.folder.files.pairs:
       if not extAllowed(file.path, allowedExtensions):
         continue
       for fragment in file.fragments:
@@ -114,9 +114,13 @@ proc ripgrepSearch*(index: RegenIndex, pattern: string, caseSensitive: bool = tr
   # Get the search directory based on index type
   let searchPath = case index.kind
     of regen_git_repo:
+      # TODO why is this so dumb? the path should just be on the index
       # Find the common root directory of all files (should be the repo root)
       if index.repo.files.len > 0:
-        let firstPath = index.repo.files[0].path
+        var firstPath = ""
+        for _, f in index.repo.files.pairs:
+          firstPath = f.path
+          break
         var commonRoot = firstPath.parentDir()
         # Keep going up until we find a directory that contains .git or is the root
         while not dirExists(commonRoot / ".git") and commonRoot != "/" and commonRoot.len > 1:
@@ -168,17 +172,25 @@ proc ripgrepSearch*(index: RegenIndex, pattern: string, caseSensitive: bool = tr
           
           case index.kind
           of regen_git_repo:
-            for file in index.repo.files:
-              if file.path == filePath or file.path.endsWith(filePath):
-                regenFile = file
-                fileFound = true
-                break
+            if index.repo.files.hasKey(filePath):
+              regenFile = index.repo.files[filePath]
+              fileFound = true
+            else:
+              for _, file in index.repo.files.pairs:
+                if file.path == filePath or file.path.endsWith(filePath):
+                  regenFile = file
+                  fileFound = true
+                  break
           of regen_folder:
-            for file in index.folder.files:
-              if file.path == filePath or file.path.endsWith(filePath):
-                regenFile = file
-                fileFound = true
-                break
+            if index.folder.files.hasKey(filePath):
+              regenFile = index.folder.files[filePath]
+              fileFound = true
+            else:
+              for _, file in index.folder.files.pairs:
+                if file.path == filePath or file.path.endsWith(filePath):
+                  regenFile = file
+                  fileFound = true
+                  break
           
           # If we found the file in our index, create a result for each submatch
           if fileFound:

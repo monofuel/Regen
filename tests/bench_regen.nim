@@ -1,5 +1,5 @@
 import
-  std/[os, strformat, threadpool],
+  std/[os, strformat, threadpool, tables],
   benchy,
   openai_leap,
   ../src/regen
@@ -159,16 +159,16 @@ proc benchmarkSimilaritySearch() =
     return
   
   # Create test index with actual content
-  var regenFiles: seq[RegenFile] = @[]
+  var regenFilesTbl = initTable[string, RegenFile]()
   for filePath in testFiles:
     let regenFile = newRegenFile(filePath)
-    regenFiles.add(regenFile)
+    regenFilesTbl[regenFile.path] = regenFile
   
   let testRepo = RegenGitRepo(
     name: "benchmark-repo",
     latestCommitHash: "test123",
     isDirty: false,
-    files: regenFiles
+    files: regenFilesTbl
   )
   
   let testIndex = RegenIndex(
@@ -179,7 +179,7 @@ proc benchmarkSimilaritySearch() =
   
   echo &"Index created with {testIndex.repo.files.len} files"
   var totalFragments = 0
-  for file in testIndex.repo.files:
+  for file in testIndex.repo.files.values:
     totalFragments += file.fragments.len
   echo &"Total fragments: {totalFragments}"
   

@@ -1,6 +1,7 @@
 import
   unittest,
-  regen
+  regen,
+  std/tables
 
 from std/os import fileExists, removeFile
 
@@ -54,7 +55,10 @@ suite "RegenIndex serialization tests":
       name: "test-repo",
       latestCommitHash: "abc123def456",
       isDirty: false,
-      files: @[file1, file2]
+      files: {
+        "/src/main.nim": file1,
+        "/src/utils.nim": file2
+      }.toTable
     )
     
     # Create test index
@@ -88,9 +92,10 @@ suite "RegenIndex serialization tests":
     check loadedIndex.repo.files.len == testRepo.files.len
     
     # Verify first file
-    check loadedIndex.repo.files[0].filename == file1.filename
-    check loadedIndex.repo.files[0].hash == file1.hash
-    check loadedIndex.repo.files[0].fragments.len == 2
+    check loadedIndex.repo.files.hasKey("/src/main.nim")
+    check loadedIndex.repo.files["/src/main.nim"].filename == file1.filename
+    check loadedIndex.repo.files["/src/main.nim"].hash == file1.hash
+    check loadedIndex.repo.files["/src/main.nim"].fragments.len == 2
     
     # Verify first fragment - including the embedding
     check loadedIndex.repo.files[0].fragments[0].startLine == fragment1.startLine
@@ -101,8 +106,9 @@ suite "RegenIndex serialization tests":
     check loadedIndex.repo.files[0].fragments[0].embedding == fragment1.embedding
     
     # Verify second file (empty)
-    check loadedIndex.repo.files[1].filename == file2.filename
-    check loadedIndex.repo.files[1].fragments.len == 0
+    check loadedIndex.repo.files.hasKey("/src/utils.nim")
+    check loadedIndex.repo.files["/src/utils.nim"].filename == file2.filename
+    check loadedIndex.repo.files["/src/utils.nim"].fragments.len == 0
     
     # Clean up test file
     removeFile(testFile)
@@ -131,7 +137,9 @@ suite "RegenIndex serialization tests":
     
     let testFolder = RegenFolder(
       path: "/data/docs",
-      files: @[file1]
+      files: {
+        "/data/docs/readme.md": file1
+      }.toTable
     )
     
     let testIndex = RegenIndex(
@@ -160,9 +168,10 @@ suite "RegenIndex serialization tests":
     check loadedIndex.kind == testIndex.kind
     check loadedIndex.folder.path == testFolder.path
     check loadedIndex.folder.files.len == testFolder.files.len
-    check loadedIndex.folder.files[0].filename == file1.filename
-    check loadedIndex.folder.files[0].fragments.len == 1
-    check loadedIndex.folder.files[0].fragments[0].embedding.len > 0
+    check loadedIndex.folder.files.hasKey("/data/docs/readme.md")
+    check loadedIndex.folder.files["/data/docs/readme.md"].filename == file1.filename
+    check loadedIndex.folder.files["/data/docs/readme.md"].fragments.len == 1
+    check loadedIndex.folder.files["/data/docs/readme.md"].fragments[0].embedding.len > 0
     
     # Clean up test file
     removeFile(testFile)
@@ -241,7 +250,9 @@ suite "Similarity search tests":
       name: "test-repo",
       latestCommitHash: "abc123def456",
       isDirty: false,
-      files: @[testFile]
+      files: {
+        "/src/math.nim": testFile
+      }.toTable
     )
     
     # Create test index
