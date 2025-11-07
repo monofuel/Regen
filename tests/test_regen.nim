@@ -64,7 +64,6 @@ suite "RegenIndex serialization tests":
     
     # Create test index
     let testIndex = RegenIndex(
-      version: "0.1.0",
       kind: regen_git_repo,
       repo: testRepo
     )
@@ -85,7 +84,6 @@ suite "RegenIndex serialization tests":
     let loadedIndex = readIndexFromFile(testFile)
     
     # Verify the index data matches
-    check loadedIndex.version == testIndex.version
     check loadedIndex.kind == testIndex.kind
     check loadedIndex.repo.name == testRepo.name
     check loadedIndex.repo.latestCommitHash == testRepo.latestCommitHash
@@ -144,7 +142,6 @@ suite "RegenIndex serialization tests":
     )
     
     let testIndex = RegenIndex(
-      version: "0.1.0",
       kind: regen_folder,
       folder: testFolder
     )
@@ -165,7 +162,6 @@ suite "RegenIndex serialization tests":
     let loadedIndex = readIndexFromFile(testFile)
     
     # Verify the index data matches
-    check loadedIndex.version == testIndex.version
     check loadedIndex.kind == testIndex.kind
     check loadedIndex.folder.path == testFolder.path
     check loadedIndex.folder.files.len == testFolder.files.len
@@ -259,7 +255,6 @@ suite "Similarity search tests":
     
     # Create test index
     let testIndex = RegenIndex(
-      version: "0.1.0",
       kind: regen_git_repo,
       repo: testRepo
     )
@@ -314,7 +309,6 @@ suite "Similarity search tests":
     )
     
     let testIndex = RegenIndex(
-      version: "0.1.0",
       kind: regen_folder,
       folder: testFolder
     )

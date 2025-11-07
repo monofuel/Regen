@@ -101,7 +101,6 @@ suite "Regen Search API Tests":
     )
     
     let testIndex = RegenIndex(
-      version: "0.1.0",
       kind: regen_git_repo,
       repo: testRepo
     )

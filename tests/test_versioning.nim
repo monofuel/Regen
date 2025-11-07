@@ -1,15 +1,14 @@
 import std/[os, tables, endians, strformat]
-import src/[types, logs]
+import ../src/[types]
 import flatty
 
 const RegenFileIndexVersion = 8
-const ConfigVersion = "0.1.0"
 
-proc writeIndexToFile(index: RegenIndex, filepath: string) =
+proc writeIndexToFile(index: RegenIndex, filepath: string, version: int32 = RegenFileIndexVersion) =
   ## Write a RegenIndex object to a file using flatty serialization with version prefix.
   let data = toFlatty(index)
   var versionBytes: array[4, byte]
-  var versionInt = RegenFileIndexVersion
+  var versionInt = version
   littleEndian32(versionBytes.addr, versionInt.addr)
   let versionData = @versionBytes
   let dataBytes = cast[seq[byte]](data)
@@ -32,12 +31,20 @@ proc readIndexFromFile(filepath: string): RegenIndex =
   echo &"File version: {fileVersion}, expected: {RegenFileIndexVersion}"
 
   # Check version compatibility
-  if fileVersion < RegenFileIndexVersion:
-    # Older version - for now, we require reindexing
-    raise newException(ValueError, &"Index file {filepath} has version {fileVersion} but current version is {RegenFileIndexVersion}. Please reindex.")
-  elif fileVersion > RegenFileIndexVersion:
-    # Newer version - this shouldn't happen unless there's a bug
-    echo &"Warning: Index file {filepath} has newer version {fileVersion} than expected {RegenFileIndexVersion}. This may cause issues."
+  if fileVersion != RegenFileIndexVersion:
+    # Invalid version - delete the file and behave as if it doesn't exist
+    echo &"Index file {filepath} has incompatible version {fileVersion} (expected {RegenFileIndexVersion}). Deleting file."
+    try:
+      removeFile(filepath)
+    except:
+      echo &"Could not delete invalid index file {filepath}"
+    # Raise specific exception so caller knows this is a version incompatibility
+    var err = new(IndexVersionError)
+    err.msg = &"Index file {filepath} had incompatible version and was deleted. Index will be rebuilt."
+    err.filepath = filepath
+    err.fileVersion = fileVersion
+    err.expectedVersion = RegenFileIndexVersion
+    raise err
 
   # Extract flatty data (skip version header)
   let flattyData = cast[string](dataBytes[4..^1])
@@ -62,7 +69,6 @@ proc testVersioning() =
   )
 
   let testIndex = RegenIndex(
-    version: ConfigVersion,
     kind: regen_folder,
     folder: testFolder
   )
@@ -100,7 +106,33 @@ proc testVersioning() =
 
   # Clean up
   removeFile(testFilePath)
-  echo "✓ Test completed successfully"
+
+  # Test version 7 compatibility (should raise IndexVersionError)
+  echo "\nTesting version 7 compatibility..."
+  let oldVersionFilePath = "/tmp/test_old_version.flat"
+  echo &"Writing index with version 7 to {oldVersionFilePath}..."
+  writeIndexToFile(testIndex, oldVersionFilePath, 7)
+
+  echo "Attempting to read version 7 file..."
+  try:
+    let loadedIndex = readIndexFromFile(oldVersionFilePath)
+    echo "✗ ERROR: Should have raised IndexVersionError for version 7!"
+  except IndexVersionError as e:
+    echo "✓ Correctly caught IndexVersionError for version 7:"
+    echo &"   Filepath: {e.filepath}"
+    echo &"   File version: {e.fileVersion}"
+    echo &"   Expected version: {e.expectedVersion}"
+  except Exception as e:
+    echo &"✗ ERROR: Caught wrong exception type: {e.msg}"
+
+  # Verify file was deleted
+  if fileExists(oldVersionFilePath):
+    echo "✗ ERROR: Version 7 file should have been deleted!"
+    removeFile(oldVersionFilePath)
+  else:
+    echo "✓ Version 7 file was correctly deleted"
+
+  echo "✓ All tests completed successfully"
 
 when isMainModule:
   testVersioning()

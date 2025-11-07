@@ -69,7 +69,6 @@ proc createTestData(): RegenIndex =
   )
   
   result = RegenIndex(
-    version: "0.1.0",
     kind: regen_git_repo,
     repo: testRepo
   )
@@ -121,7 +120,6 @@ if tmpContent == goldContent:
   # Also verify we can deserialize both files successfully
   let deserializedFromGold = readIndexFromFile(goldFile)
   let testMatches = (
-    deserializedFromGold.version == testIndex.version and
     deserializedFromGold.kind == testIndex.kind and
     deserializedFromGold.repo.name == testIndex.repo.name and
     deserializedFromGold.repo.latestCommitHash == testIndex.repo.latestCommitHash and

@@ -61,7 +61,6 @@ type
 
   RegenIndex* = object
     ## a top level wrapper for a regen index.
-    version*: string
     case kind*: RegenIndexType
     of regen_git_repo:
       repo*: RegenGitRepo
@@ -80,4 +79,10 @@ type
     lineNumber*: int
     lineContent*: string
     matchStart*: int
-    matchEnd*: int 
+    matchEnd*: int
+
+  IndexVersionError* = ref object of CatchableError
+    ## Exception raised when index file has incompatible version
+    filepath*: string
+    fileVersion*: int32
+    expectedVersion*: int32 

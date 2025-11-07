@@ -32,12 +32,20 @@ proc readIndexFromFile*(filepath: string): RegenIndex =
   littleEndian32(fileVersion.addr, versionBytes.addr)
 
   # Check version compatibility
-  if fileVersion < RegenFileIndexVersion:
-    # Older version - for now, we require reindexing
-    raise newException(ValueError, &"Index file {filepath} has version {fileVersion} but current version is {RegenFileIndexVersion}. Please reindex.")
-  elif fileVersion > RegenFileIndexVersion:
-    # Newer version - this shouldn't happen unless there's a bug
-    warn &"Index file {filepath} has newer version {fileVersion} than expected {RegenFileIndexVersion}. This may cause issues."
+  if fileVersion != RegenFileIndexVersion:
+    # Invalid version - delete the file and behave as if it doesn't exist
+    warn &"Index file {filepath} has incompatible version {fileVersion} (expected {RegenFileIndexVersion}). Deleting file."
+    try:
+      removeFile(filepath)
+    except:
+      warn &"Could not delete invalid index file {filepath}"
+    # Raise specific exception so caller knows this is a version incompatibility
+    var err = new(IndexVersionError)
+    err.msg = &"Index file {filepath} had incompatible version and was deleted. Index will be rebuilt."
+    err.filepath = filepath
+    err.fileVersion = fileVersion
+    err.expectedVersion = RegenFileIndexVersion
+    raise err
 
   # Extract flatty data (skip version header)
   let flattyData = cast[string](dataBytes[4..^1])
@@ -46,7 +54,7 @@ proc readIndexFromFile*(filepath: string): RegenIndex =
 # Legacy functions for backward compatibility
 proc writeRepoToFile*(repo: RegenGitRepo, filepath: string) =
   ## Write a RegenGitRepo object to a file using flatty serialization.
-  let index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
+  let index = RegenIndex(kind: regen_git_repo, repo: repo)
   writeIndexToFile(index, filepath)
 
 proc readRepoFromFile*(filepath: string): RegenGitRepo =
@@ -227,7 +235,7 @@ proc newRegenFolder*(folderPath: string, whitelist: seq[string] = @[], blacklist
 
 proc newRegenIndex*(indexType: RegenIndexType, path: string, whitelist: seq[string], blacklistExtensions: seq[string], blacklistFilenames: seq[string]): RegenIndex =
   ## Create a new RegenIndex of the specified type using parallel processing.
-  result = RegenIndex(version: "0.1.0", kind: indexType)
+  result = RegenIndex(kind: indexType)
   
   case indexType
   of regen_git_repo:
@@ -387,18 +395,24 @@ proc indexAll*() =
         else:
           warn "Existing index is wrong type, rebuilding..."
           let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
-          index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
+          index = RegenIndex(kind: regen_folder, folder: folder)
           changed = true
+      except IndexVersionError:
+        # Index file had incompatible version and was already deleted
+        info "Index file had incompatible version and was deleted, rebuilding..."
+        let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
+        index = RegenIndex(kind: regen_folder, folder: folder)
+        changed = true
       except:
         warn "Could not load existing index, rebuilding..."
         let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
-        index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
+        index = RegenIndex(kind: regen_folder, folder: folder)
         changed = true
     else:
       # Create new index
       info "Creating new index..."
       let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
-      index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
+      index = RegenIndex(kind: regen_folder, folder: folder)
       changed = true
     
     # Only persist if we actually rebuilt or updated
@@ -444,18 +458,24 @@ proc indexAll*() =
         else:
           warn "Existing index is wrong type, rebuilding..."
           let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
-          index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
+          index = RegenIndex(kind: regen_git_repo, repo: repo)
           changed = true
+      except IndexVersionError:
+        # Index file had incompatible version and was already deleted
+        info "Index file had incompatible version and was deleted, rebuilding..."
+        let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
+        index = RegenIndex(kind: regen_git_repo, repo: repo)
+        changed = true
       except:
         warn "Could not load existing index, rebuilding..."
         let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
-        index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
+        index = RegenIndex(kind: regen_git_repo, repo: repo)
         changed = true
     else:
       # Create new index
       info "Creating new index..."
       let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
-      index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
+      index = RegenIndex(kind: regen_git_repo, repo: repo)
       changed = true
     
     # Only persist if we actually rebuilt or updated
