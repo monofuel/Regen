@@ -10,7 +10,7 @@ task benchmark, "Run performance benchmarks":
 
 requires "nim >= 2.0.0"
 requires "flatty >= 0.3.4"
-requires "openai_leap >= 7.0.0"
+requires "openai_leap >= 8.0.0"
 requires "crunchy >= 0.1.11"
 requires "benchy >= 0.0.1"
 requires "jsony >= 1.1.5"
