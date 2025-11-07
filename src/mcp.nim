@@ -31,7 +31,8 @@ proc buildEmbeddingInputSchema(): JsonNode =
     "properties": {
       "query": {"type": "string", "description": "Semantic query"},
       "maxResults": {"type": "integer", "default": 10, "description": "Maximum number of results"},
-      "model": {"type": "string", "default": "nomic-embed-text", "description": "Embedding model"},
+      "model": {"type": "string", "default": "text-embedding-embeddinggemma-300m", "description": "Embedding model"},
+      "task": {"type": "string", "enum": ["RetrievalQuery", "SemanticSimilarity"], "default": "RetrievalQuery", "description": "Embedding task type. RetrievalQuery finds relevant documents (EmbeddingGemma models only), SemanticSimilarity provides semantic matching (all models)"},
       "extensions": {"type": "array", "description": "Optional list of file extensions to include (e.g., ['.nim', '.md'])", "items": {"type": "string"}}
     },
     "required": ["query"],
@@ -137,11 +138,18 @@ proc registerRegenTools(server: McpServer) =
       except:
         discard
     let model = if arguments.hasKey("model"): arguments["model"].getStr() else: config.embeddingModel
+    let taskStr = if arguments.hasKey("task"): arguments["task"].getStr() else: "RetrievalQuery"
     var exts: seq[string] = @[]
     if arguments.hasKey("extensions") and arguments["extensions"].kind == JArray:
       for node in arguments["extensions"]:
         if node.kind == JString:
           exts.add(node.getStr())
+
+    # Parse task parameter
+    let task = case taskStr:
+      of "RetrievalQuery": RetrievalQuery
+      of "SemanticSimilarity": SemanticSimilarity
+      else: RetrievalQuery  # Default fallback
 
     let indexPaths = findAllIndexes()
     if indexPaths.len == 0:
@@ -151,7 +159,7 @@ proc registerRegenTools(server: McpServer) =
     for indexPath in indexPaths:
       try:
         let idx = readIndexFromFile(indexPath)
-        let results = findSimilarFragments(idx, query, maxResults, model, exts)
+        let results = findSimilarFragments(idx, query, maxResults, model, task, exts)
         allResults.add(results)
       except Exception as e:
         warn &"Could not search index {extractFilename(indexPath)}: {e.msg}"

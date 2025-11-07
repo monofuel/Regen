@@ -21,15 +21,26 @@ proc initEmbeddingClient*() =
     maxInFlight = MaxInFlight
   )
 
-proc generateEmbedding*(text: string, model: string = SimilarityEmbeddingModel): seq[float32] =
-  ## Generate an embedding for the given text using ollama.
+proc generateEmbedding*(text: string, model: string = SimilarityEmbeddingModel, task: EmbeddingTask = SemanticSimilarity): seq[float32] =
+  ## Generate an embedding for the given text using ollama with task-specific prompting.
   if localOllamaApi.isNil:
     initEmbeddingClient()
-  let embedding = localOllamaApi.generateEmbeddings(
-    model = model,
-    input = text
-  )
-  result = embedding.data[0].embedding
+
+  # For EmbeddingGemma models, use task-specific embeddings
+  if model.toLowerAscii().contains("embeddinggemma"):
+    let embedding = localOllamaApi.generateEmbeddingWithTask(
+      model = model,
+      input = text,
+      task = task
+    )
+    result = embedding.data[0].embedding
+  else:
+    # For other models, use standard embedding generation
+    let embedding = localOllamaApi.generateEmbeddings(
+      model = model,
+      input = text
+    )
+    result = embedding.data[0].embedding
 
 proc cosineSimilarity*(a, b: seq[float32]): float32 =
   ## Calculate cosine similarity between two embedding vectors.
@@ -61,10 +72,10 @@ proc extAllowed(filePath: string, allowed: seq[string]): bool =
       return true
   false
 
-proc findSimilarFragments*(index: RegenIndex, queryText: string, maxResults: int = 10, model: string = SimilarityEmbeddingModel, allowedExtensions: seq[string] = @[]): seq[SimilarityResult] =
+proc findSimilarFragments*(index: RegenIndex, queryText: string, maxResults: int = 10, model: string = SimilarityEmbeddingModel, task: EmbeddingTask = RetrievalQuery, allowedExtensions: seq[string] = @[]): seq[SimilarityResult] =
   ## Find the most similar fragments to the query text.
   ## If allowedExtensions is non-empty, restrict results to files whose extension is in the list.
-  let queryEmbedding = generateEmbedding(queryText, model)
+  let queryEmbedding = generateEmbedding(queryText, model, task)
   var results: seq[SimilarityResult] = @[]
   
   # Collect all fragments with their similarity scores
@@ -74,7 +85,15 @@ proc findSimilarFragments*(index: RegenIndex, queryText: string, maxResults: int
       if not extAllowed(file.path, allowedExtensions):
         continue
       for fragment in file.fragments:
-        if fragment.model == model:
+        # Filter by both model and task type
+        # RetrievalQuery searches look at RetrievalDocument fragments
+        # SemanticSimilarity searches look at SemanticSimilarity fragments
+        let expectedFragmentTask = case task:
+          of RetrievalQuery: RetrievalDocument
+          of SemanticSimilarity: SemanticSimilarity
+          else: RetrievalDocument  # fallback
+
+        if fragment.model == model and fragment.task == expectedFragmentTask:
           let similarity = cosineSimilarity(queryEmbedding, fragment.embedding)
           results.add(SimilarityResult(
             fragment: fragment,
@@ -86,7 +105,15 @@ proc findSimilarFragments*(index: RegenIndex, queryText: string, maxResults: int
       if not extAllowed(file.path, allowedExtensions):
         continue
       for fragment in file.fragments:
-        if fragment.model == model:
+        # Filter by both model and task type
+        # RetrievalQuery searches look at RetrievalDocument fragments
+        # SemanticSimilarity searches look at SemanticSimilarity fragments
+        let expectedFragmentTask = case task:
+          of RetrievalQuery: RetrievalDocument
+          of SemanticSimilarity: SemanticSimilarity
+          else: RetrievalDocument  # fallback
+
+        if fragment.model == model and fragment.task == expectedFragmentTask:
           let similarity = cosineSimilarity(queryEmbedding, fragment.embedding)
           results.add(SimilarityResult(
             fragment: fragment,

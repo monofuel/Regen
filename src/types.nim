@@ -1,11 +1,14 @@
 ## Shared types for Regen indexing and search functionality
 import std/tables
+import openai_leap
+
+export openai_leap.EmbeddingTask
 
 const
   #DefaultEmbeddingModel* = "Qwen/Qwen3-Embedding-0.6B-GGUF"
   #DefaultApiBaseUrl* = "http://10.11.2.16:1234/v1"
-  DefaultEmbeddingModel* = "nomic-embed-text"
-  DefaultApiBaseUrl* = "http://localhost:11434/v1"
+  DefaultEmbeddingModel* = "text-embedding-embeddinggemma-300m"
+  DefaultApiBaseUrl* = "http://127.0.0.1:1234/v1"  # LM Studio API
 
 type
   RegenIndexType* = enum
@@ -33,6 +36,7 @@ type
     fragmentType*: string
     model*: string
     chunkAlgorithm*: string
+    task*: EmbeddingTask  ## Task type used for embedding generation
     private*: bool
     contentScore*: int
     hash*: string

@@ -15,6 +15,7 @@ proc flushSection(result: var seq[RegenFragment], sectionStart: int, sectionEnd:
     fragmentType: "markdown_section",
     model: "",
     chunkAlgorithm: "markdown",
+    task: RetrievalDocument,
     private: false,
     contentScore: 0,
     hash: ""

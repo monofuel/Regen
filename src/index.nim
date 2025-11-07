@@ -5,7 +5,7 @@ import
   flatty, crunchy,
   ./types, ./search, ./configs, ./logs, ./fragment
 
-const RegenFileIndexVersion* = 8
+const RegenFileIndexVersion* = 9
 
 proc writeIndexToFile*(index: RegenIndex, filepath: string) =
   ## Write a RegenIndex object to a file using flatty serialization with version prefix.
@@ -88,11 +88,11 @@ proc isGitDirty*(repoPath: string): bool =
   except:
     result = true
 
-proc newRegenFragment*(content: string, filePath: string, startLine: int = 1, endLine: int = -1, chunkAlgorithm: string = "simple", fragmentType: string = "document"): RegenFragment =
+proc newRegenFragment*(content: string, filePath: string, startLine: int = 1, endLine: int = -1, chunkAlgorithm: string = "simple", fragmentType: string = "document", task: EmbeddingTask = RetrievalDocument): RegenFragment =
   ## Create a new RegenFragment from content and metadata.
   let actualEndLine = if endLine == -1: content.split('\n').len else: endLine
   let cfg = loadConfig()
-  let embedding = generateEmbedding(content, cfg.embeddingModel)
+  let embedding = generateEmbedding(content, cfg.embeddingModel, task)
 
   result = RegenFragment(
     startLine: startLine,
@@ -101,6 +101,7 @@ proc newRegenFragment*(content: string, filePath: string, startLine: int = 1, en
     fragmentType: fragmentType,
     model: cfg.embeddingModel,
     chunkAlgorithm: chunkAlgorithm,
+    task: task,
     private: false,
     contentScore: (if content.len > 1000: 90 else: 70),
     hash: createFileHash(content)
@@ -126,23 +127,54 @@ proc newRegenFile*(filePath: string): RegenFile =
 
   var fragments: seq[RegenFragment] = @[]
   let fragmentType = "document"
+  let cfg = loadConfig()
+  let isEmbeddingGemma = cfg.embeddingModel.toLowerAscii().contains("embeddinggemma")
+
   for ch in chunks:
     let fragText = sliceContent(ch.startLine, ch.endLine)
     if fragText.len == 0:
       continue
-    let frag = newRegenFragment(
-      content = fragText,
-      filePath = filePath,
-      startLine = ch.startLine,
-      endLine = ch.endLine,
-      chunkAlgorithm = ch.chunkAlgorithm,
-      fragmentType = fragmentType
-    )
-    fragments.add(frag)
+
+    if isEmbeddingGemma:
+      # EmbeddingGemma: Create both retrieval and semantic similarity fragments
+      let retrievalFrag = newRegenFragment(
+        content = fragText,
+        filePath = filePath,
+        startLine = ch.startLine,
+        endLine = ch.endLine,
+        chunkAlgorithm = ch.chunkAlgorithm,
+        fragmentType = fragmentType,
+        task = RetrievalDocument
+      )
+      fragments.add(retrievalFrag)
+
+      let semanticFrag = newRegenFragment(
+        content = fragText,
+        filePath = filePath,
+        startLine = ch.startLine,
+        endLine = ch.endLine,
+        chunkAlgorithm = ch.chunkAlgorithm,
+        fragmentType = fragmentType,
+        task = SemanticSimilarity
+      )
+      fragments.add(semanticFrag)
+    else:
+      # Non-EmbeddingGemma: Only create semantic similarity fragments
+      let semanticFrag = newRegenFragment(
+        content = fragText,
+        filePath = filePath,
+        startLine = ch.startLine,
+        endLine = ch.endLine,
+        chunkAlgorithm = ch.chunkAlgorithm,
+        fragmentType = fragmentType,
+        task = SemanticSimilarity
+      )
+      fragments.add(semanticFrag)
 
   # Fallback: if no fragments were produced (e.g., empty file), create a single empty fragment
   if fragments.len == 0:
-    let frag = newRegenFragment("", filePath, 1, 1, chunkAlgorithm = "simple", fragmentType = fragmentType)
+    let fallbackTask = if isEmbeddingGemma: RetrievalDocument else: SemanticSimilarity
+    let frag = newRegenFragment("", filePath, 1, 1, chunkAlgorithm = "simple", fragmentType = fragmentType, task = fallbackTask)
     fragments.add(frag)
 
   result = RegenFile(
