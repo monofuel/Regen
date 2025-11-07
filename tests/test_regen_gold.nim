@@ -20,20 +20,22 @@ proc createTestData(): RegenIndex =
   let fragment1 = RegenFragment(
     startLine: 1,
     endLine: 10,
-    embedding: generateEmbedding("def calculate_sum(a, b):\n    return a + b"),
+    embedding: generateEmbedding("def calculate_sum(a, b):\n    return a + b", SimilarityEmbeddingModel, SemanticSimilarity),
     fragmentType: "function",
     model: SimilarityEmbeddingModel,
+    task: SemanticSimilarity,
     private: false,
     contentScore: 85,
     hash: "frag1hash"
   )
-  
+
   let fragment2 = RegenFragment(
     startLine: 11,
     endLine: 20,
-    embedding: generateEmbedding("# This function calculates the sum of two numbers"),
+    embedding: generateEmbedding("# This function calculates the sum of two numbers", SimilarityEmbeddingModel, SemanticSimilarity),
     fragmentType: "comment",
     model: SimilarityEmbeddingModel,
+    task: SemanticSimilarity,
     private: false,
     contentScore: 60,
     hash: "frag2hash"
