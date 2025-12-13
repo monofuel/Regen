@@ -22,6 +22,7 @@ proc flushRange(result: var seq[RegenFragment], startLine: int, endLine: int) =
     fragmentType: "nim_block",
     model: "",
     chunkAlgorithm: "nim",
+    task: RetrievalDocument,
     private: false,
     contentScore: 0,
     hash: ""

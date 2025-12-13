@@ -1,69 +1,60 @@
 ## Indexing functionality for Regen - creating and managing file indexes
 
 import
-  std/[strutils, strformat, os, times, osproc, algorithm, sequtils, tables],
+  std/[strutils, strformat, os, times, osproc, algorithm, tables, endians],
   flatty, crunchy,
   ./types, ./search, ./configs, ./logs, ./fragment
 
-const RegenFileIndexVersion* = 8
-
-proc getIndexFormatPath(): string =
-  ## Path to the standalone index format version file.
-  let regenDir = getHomeDir() / ".regen"
-  if not dirExists(regenDir):
-    createDir(regenDir)
-  result = regenDir / "INDEX_FORMAT"
-
-proc purgeAllIndexFiles() =
-  ## Delete all persisted index flat files.
-  let regenDir = getHomeDir() / ".regen"
-  let foldersDir = regenDir / "folders"
-  if dirExists(foldersDir):
-    for file in walkDir(foldersDir):
-      if file.kind == pcFile and file.path.endsWith(".flat"):
-        try: removeFile(file.path) except: discard
-  let reposDir = regenDir / "repos"
-  if dirExists(reposDir):
-    for file in walkDir(reposDir):
-      if file.kind == pcFile and file.path.endsWith(".flat"):
-        try: removeFile(file.path) except: discard
-
-proc ensureIndexFormatUpToDate*(): bool =
-  ## Ensure on-disk index files match current format version.
-  ## Returns true if format already matched; false if a purge was performed.
-  let fmtPath = getIndexFormatPath()
-  if fileExists(fmtPath):
-    var existing = -1
-    try:
-      existing = parseInt(readFile(fmtPath).strip())
-    except:
-      existing = -1
-    if existing != RegenFileIndexVersion:
-      warn "Index format changed. Purging existing index files and requiring reindex..."
-      purgeAllIndexFiles()
-      writeFile(fmtPath, $RegenFileIndexVersion)
-      return false
-    return true
-  else:
-    # First run: establish the current format version file
-    writeFile(fmtPath, $RegenFileIndexVersion)
-    return true
+const RegenFileIndexVersion* = 9
 
 proc writeIndexToFile*(index: RegenIndex, filepath: string) =
-  ## Write a RegenIndex object to a file using flatty serialization.
+  ## Write a RegenIndex object to a file using flatty serialization with version prefix.
   let data = toFlatty(index)
-  writeFile(filepath, data)
+  var versionBytes: array[4, byte]
+  var versionInt = RegenFileIndexVersion
+  littleEndian32(versionBytes.addr, versionInt.addr)
+  let versionData = @versionBytes
+  let dataBytes = cast[seq[byte]](data)
+  writeFile(filepath, versionData & dataBytes)
 
 proc readIndexFromFile*(filepath: string): RegenIndex =
-  ## Read a RegenIndex object from a file using flatty deserialization.
-  discard ensureIndexFormatUpToDate()
-  let data = readFile(filepath)
-  fromFlatty(data, RegenIndex)
+  ## Read a RegenIndex object from a file using flatty deserialization with version checking.
+  let dataBytes = cast[seq[byte]](readFile(filepath))
+
+  if dataBytes.len < 4:
+    raise newException(ValueError, &"Index file {filepath} is too small to contain version header")
+
+  # Read version from first 4 bytes
+  var fileVersion: int32
+  var versionBytes: array[4, byte]
+  for i in 0..3:
+    versionBytes[i] = dataBytes[i]
+  littleEndian32(fileVersion.addr, versionBytes.addr)
+
+  # Check version compatibility
+  if fileVersion != RegenFileIndexVersion:
+    # Invalid version - delete the file and behave as if it doesn't exist
+    warn &"Index file {filepath} has incompatible version {fileVersion} (expected {RegenFileIndexVersion}). Deleting file."
+    try:
+      removeFile(filepath)
+    except:
+      warn &"Could not delete invalid index file {filepath}"
+    # Raise specific exception so caller knows this is a version incompatibility
+    var err = new(IndexVersionError)
+    err.msg = &"Index file {filepath} had incompatible version and was deleted. Index will be rebuilt."
+    err.filepath = filepath
+    err.fileVersion = fileVersion
+    err.expectedVersion = RegenFileIndexVersion
+    raise err
+
+  # Extract flatty data (skip version header)
+  let flattyData = cast[string](dataBytes[4..^1])
+  fromFlatty(flattyData, RegenIndex)
 
 # Legacy functions for backward compatibility
 proc writeRepoToFile*(repo: RegenGitRepo, filepath: string) =
   ## Write a RegenGitRepo object to a file using flatty serialization.
-  let index = RegenIndex(version: "0.1.0", kind: regen_git_repo, repo: repo)
+  let index = RegenIndex(kind: regen_git_repo, repo: repo)
   writeIndexToFile(index, filepath)
 
 proc readRepoFromFile*(filepath: string): RegenGitRepo =
@@ -97,11 +88,11 @@ proc isGitDirty*(repoPath: string): bool =
   except:
     result = true
 
-proc newRegenFragment*(content: string, filePath: string, startLine: int = 1, endLine: int = -1, chunkAlgorithm: string = "simple", fragmentType: string = "document"): RegenFragment =
+proc newRegenFragment*(content: string, filePath: string, startLine: int = 1, endLine: int = -1, chunkAlgorithm: string = "simple", fragmentType: string = "document", task: EmbeddingTask = RetrievalDocument): RegenFragment =
   ## Create a new RegenFragment from content and metadata.
   let actualEndLine = if endLine == -1: content.split('\n').len else: endLine
   let cfg = loadConfig()
-  let embedding = generateEmbedding(content, cfg.embeddingModel)
+  let embedding = generateEmbedding(content, cfg.embeddingModel, task)
 
   result = RegenFragment(
     startLine: startLine,
@@ -110,6 +101,7 @@ proc newRegenFragment*(content: string, filePath: string, startLine: int = 1, en
     fragmentType: fragmentType,
     model: cfg.embeddingModel,
     chunkAlgorithm: chunkAlgorithm,
+    task: task,
     private: false,
     contentScore: (if content.len > 1000: 90 else: 70),
     hash: createFileHash(content)
@@ -135,23 +127,54 @@ proc newRegenFile*(filePath: string): RegenFile =
 
   var fragments: seq[RegenFragment] = @[]
   let fragmentType = "document"
+  let cfg = loadConfig()
+  let isEmbeddingGemma = cfg.embeddingModel.toLowerAscii().contains("embeddinggemma")
+
   for ch in chunks:
     let fragText = sliceContent(ch.startLine, ch.endLine)
     if fragText.len == 0:
       continue
-    let frag = newRegenFragment(
-      content = fragText,
-      filePath = filePath,
-      startLine = ch.startLine,
-      endLine = ch.endLine,
-      chunkAlgorithm = ch.chunkAlgorithm,
-      fragmentType = fragmentType
-    )
-    fragments.add(frag)
+
+    if isEmbeddingGemma:
+      # EmbeddingGemma: Create both retrieval and semantic similarity fragments
+      let retrievalFrag = newRegenFragment(
+        content = fragText,
+        filePath = filePath,
+        startLine = ch.startLine,
+        endLine = ch.endLine,
+        chunkAlgorithm = ch.chunkAlgorithm,
+        fragmentType = fragmentType,
+        task = RetrievalDocument
+      )
+      fragments.add(retrievalFrag)
+
+      let semanticFrag = newRegenFragment(
+        content = fragText,
+        filePath = filePath,
+        startLine = ch.startLine,
+        endLine = ch.endLine,
+        chunkAlgorithm = ch.chunkAlgorithm,
+        fragmentType = fragmentType,
+        task = SemanticSimilarity
+      )
+      fragments.add(semanticFrag)
+    else:
+      # Non-EmbeddingGemma: Only create semantic similarity fragments
+      let semanticFrag = newRegenFragment(
+        content = fragText,
+        filePath = filePath,
+        startLine = ch.startLine,
+        endLine = ch.endLine,
+        chunkAlgorithm = ch.chunkAlgorithm,
+        fragmentType = fragmentType,
+        task = SemanticSimilarity
+      )
+      fragments.add(semanticFrag)
 
   # Fallback: if no fragments were produced (e.g., empty file), create a single empty fragment
   if fragments.len == 0:
-    let frag = newRegenFragment("", filePath, 1, 1, chunkAlgorithm = "simple", fragmentType = fragmentType)
+    let fallbackTask = if isEmbeddingGemma: RetrievalDocument else: SemanticSimilarity
+    let frag = newRegenFragment("", filePath, 1, 1, chunkAlgorithm = "simple", fragmentType = fragmentType, task = fallbackTask)
     fragments.add(frag)
 
   result = RegenFile(
@@ -244,7 +267,7 @@ proc newRegenFolder*(folderPath: string, whitelist: seq[string] = @[], blacklist
 
 proc newRegenIndex*(indexType: RegenIndexType, path: string, whitelist: seq[string], blacklistExtensions: seq[string], blacklistFilenames: seq[string]): RegenIndex =
   ## Create a new RegenIndex of the specified type using parallel processing.
-  result = RegenIndex(version: "0.1.0", kind: indexType)
+  result = RegenIndex(kind: indexType)
   
   case indexType
   of regen_git_repo:
@@ -364,7 +387,6 @@ proc updateRegenIndex*(existingIndex: RegenIndex, currentPath: string, whitelist
 
 proc indexAll*() =
   ## Index all configured folders and git repositories with intelligent incremental updates.
-  let _ = ensureIndexFormatUpToDate()
   let config = loadConfig()
   
   let whitelist = if config.whitelistExtensions.len > 0: config.whitelistExtensions else: config.extensions
@@ -405,18 +427,24 @@ proc indexAll*() =
         else:
           warn "Existing index is wrong type, rebuilding..."
           let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
-          index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
+          index = RegenIndex(kind: regen_folder, folder: folder)
           changed = true
+      except IndexVersionError:
+        # Index file had incompatible version and was already deleted
+        info "Index file had incompatible version and was deleted, rebuilding..."
+        let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
+        index = RegenIndex(kind: regen_folder, folder: folder)
+        changed = true
       except:
         warn "Could not load existing index, rebuilding..."
         let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
-        index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
+        index = RegenIndex(kind: regen_folder, folder: folder)
         changed = true
     else:
       # Create new index
       info "Creating new index..."
       let folder = newRegenFolder(folderPath, whitelist, blacklistExts, blacklistNames)
-      index = RegenIndex(version: ConfigVersion, kind: regen_folder, folder: folder)
+      index = RegenIndex(kind: regen_folder, folder: folder)
       changed = true
     
     # Only persist if we actually rebuilt or updated
@@ -462,18 +490,24 @@ proc indexAll*() =
         else:
           warn "Existing index is wrong type, rebuilding..."
           let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
-          index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
+          index = RegenIndex(kind: regen_git_repo, repo: repo)
           changed = true
+      except IndexVersionError:
+        # Index file had incompatible version and was already deleted
+        info "Index file had incompatible version and was deleted, rebuilding..."
+        let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
+        index = RegenIndex(kind: regen_git_repo, repo: repo)
+        changed = true
       except:
         warn "Could not load existing index, rebuilding..."
         let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
-        index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
+        index = RegenIndex(kind: regen_git_repo, repo: repo)
         changed = true
     else:
       # Create new index
       info "Creating new index..."
       let repo = newRegenGitRepo(repoPath, whitelist, blacklistExts, blacklistNames)
-      index = RegenIndex(version: ConfigVersion, kind: regen_git_repo, repo: repo)
+      index = RegenIndex(kind: regen_git_repo, repo: repo)
       changed = true
     
     # Only persist if we actually rebuilt or updated

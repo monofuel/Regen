@@ -9,10 +9,10 @@
 - 🔍 Semantic search using embeddings  
 - 💾 No database required - uses flatty for binary serialization
 - 📁 Works with git repos and local folders
-- 🧠 Uses Ollama for local embeddings (`nomic-embed-text`)
+- 🧠 Uses LM Studio for local embeddings (`text-embedding-embeddinggemma-300m`)
 
 
-- Warning: file contents will be sent to the embedding api. defaults to local ollama at localhost:11434/v1 using nomic-embed-text.
+- Warning: file contents will be sent to the embedding api. defaults to LM Studio at 127.0.0.1:1234/v1 using text-embedding-embeddinggemma-300m.
 - depending on your files and your environment, you may want to adjust the blacklisted filenames and extensions.
 
 ## 📋 TODO
@@ -20,7 +20,9 @@
 - [x] 🌐 OpenAPI server interface
 - [x] 🔌 MCP (Model Context Protocol) server support
 - [ ] implement CORS configuration
-- [ ] support query - document embeddings in addition to similarity search
+- [x] support query - document embeddings in addition to similarity search
+  - supported via embeddinggemma models only currently
+  - [ ] support reduced embedding dimensions (eg: 256, 512)
 - [ ] properly support multiple embedding models (currently only supports 1 in config json)
 
 ## ⚡ Quick start

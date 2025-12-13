@@ -45,7 +45,7 @@ proc printHelp*() =
   info "  -r, --ripgrep-search <pattern> [options]"
   info "    Options: --case-insensitive --max-results=N"
   info "  -e, --embedding-search <query> [options]"
-  info "    Options: --max-results=N --model=MODEL"
+  info "    Options: --max-results=N --model=MODEL --task=TASK (RetrievalQuery for EmbeddingGemma, SemanticSimilarity for all)"
   info ""
   info "Note: Search commands automatically find and search all available indexes."
   info "Use --index-all to create/update indexes before searching."
@@ -132,14 +132,16 @@ proc performEmbeddingSearch*(args: seq[string]) =
   ## Perform an embedding search from command line arguments.
   if args.len < 2:
     error "embedding search requires a search query"
-    info "Usage: regen -e <query> [--max-results=N] [--model=MODEL]"
+    info "Usage: regen -e <query> [--max-results=N] [--model=MODEL] [--task=TASK]"
     info "   or: regen --embedding-search <query> [options]"
+    info "   TASK options: RetrievalQuery (EmbeddingGemma only), SemanticSimilarity (all models)"
     return
   
   let query = args[1]
   var maxResults = 10
   var model = SimilarityEmbeddingModel
-  
+  var task = RetrievalQuery
+
   # Parse optional arguments
   for i in 2..<args.len:
     if args[i].startsWith("--max-results="):
@@ -149,13 +151,21 @@ proc performEmbeddingSearch*(args: seq[string]) =
         warn "Invalid max-results value, using default: 10"
     elif args[i].startsWith("--model="):
       model = args[i].split("=")[1]
+    elif args[i].startsWith("--task="):
+      let taskStr = args[i].split("=")[1]
+      task = case taskStr:
+        of "RetrievalQuery": RetrievalQuery
+        of "SemanticSimilarity": SemanticSimilarity
+        else:
+          warn &"Invalid task '{taskStr}', using default: RetrievalQuery"
+          RetrievalQuery
   
   let indexPaths = findAllIndexes()
   if indexPaths.len == 0:
     return
   
   info &"Searching for: '{query}'"
-  info &"Model: {model}, Max results: {maxResults}"
+  info &"Model: {model}, Task: {$task}, Max results: {maxResults}"
   info &"Searching across {indexPaths.len} indexes..."
   info "---"
   
@@ -164,7 +174,7 @@ proc performEmbeddingSearch*(args: seq[string]) =
   for indexPath in indexPaths:
     try:
       let index = readIndexFromFile(indexPath)
-      let results = findSimilarFragments(index, query, maxResults, model)
+      let results = findSimilarFragments(index, query, maxResults, model, task)
       allResults.add(results)
     except Exception as e:
       warn &"Could not search index {extractFilename(indexPath)}: {e.msg}"

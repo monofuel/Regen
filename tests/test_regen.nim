@@ -64,7 +64,6 @@ suite "RegenIndex serialization tests":
     
     # Create test index
     let testIndex = RegenIndex(
-      version: "0.1.0",
       kind: regen_git_repo,
       repo: testRepo
     )
@@ -85,7 +84,6 @@ suite "RegenIndex serialization tests":
     let loadedIndex = readIndexFromFile(testFile)
     
     # Verify the index data matches
-    check loadedIndex.version == testIndex.version
     check loadedIndex.kind == testIndex.kind
     check loadedIndex.repo.name == testRepo.name
     check loadedIndex.repo.latestCommitHash == testRepo.latestCommitHash
@@ -144,7 +142,6 @@ suite "RegenIndex serialization tests":
     )
     
     let testIndex = RegenIndex(
-      version: "0.1.0",
       kind: regen_folder,
       folder: testFolder
     )
@@ -165,7 +162,6 @@ suite "RegenIndex serialization tests":
     let loadedIndex = readIndexFromFile(testFile)
     
     # Verify the index data matches
-    check loadedIndex.version == testIndex.version
     check loadedIndex.kind == testIndex.kind
     check loadedIndex.folder.path == testFolder.path
     check loadedIndex.folder.files.len == testFolder.files.len
@@ -206,31 +202,34 @@ suite "Similarity search tests":
     let fragment1 = RegenFragment(
       startLine: 1,
       endLine: 10,
-      embedding: generateEmbedding("function to calculate sum of two numbers"),
+      embedding: generateEmbedding("function to calculate sum of two numbers", SimilarityEmbeddingModel, SemanticSimilarity),
       fragmentType: "function",
       model: SimilarityEmbeddingModel,
+      task: SemanticSimilarity,
       private: false,
       contentScore: 85,
       hash: "frag1hash"
     )
-    
+
     let fragment2 = RegenFragment(
       startLine: 11,
       endLine: 20,
-      embedding: generateEmbedding("function to calculate product of two numbers"),
+      embedding: generateEmbedding("function to calculate product of two numbers", SimilarityEmbeddingModel, SemanticSimilarity),
       fragmentType: "function",
       model: SimilarityEmbeddingModel,
+      task: SemanticSimilarity,
       private: false,
       contentScore: 80,
       hash: "frag2hash"
     )
-    
+
     let fragment3 = RegenFragment(
       startLine: 21,
       endLine: 30,
-      embedding: generateEmbedding("user interface component for displaying buttons"),
+      embedding: generateEmbedding("user interface component for displaying buttons", SimilarityEmbeddingModel, SemanticSimilarity),
       fragmentType: "component",
       model: SimilarityEmbeddingModel,
+      task: SemanticSimilarity,
       private: false,
       contentScore: 70,
       hash: "frag3hash"
@@ -259,29 +258,28 @@ suite "Similarity search tests":
     
     # Create test index
     let testIndex = RegenIndex(
-      version: "0.1.0",
       kind: regen_git_repo,
       repo: testRepo
     )
     
     # Test similarity search for math-related query
-    let mathResults = findSimilarFragments(testIndex, "addition of numbers", maxResults = 5)
+    let mathResults = findSimilarFragments(testIndex, "addition of numbers", maxResults = 5, task = SemanticSimilarity)
     check mathResults.len > 0
     check mathResults[0].similarity > 0.0  # Should find some similarity
-    
+
     # The first result should be the sum function (fragment1) since it's most similar
     # to "addition of numbers"
     check mathResults[0].fragment.hash == "frag1hash"
-    
+
     # Test similarity search for UI-related query
-    let uiResults = findSimilarFragments(testIndex, "button component interface", maxResults = 5)
+    let uiResults = findSimilarFragments(testIndex, "button component interface", maxResults = 5, task = SemanticSimilarity)
     check uiResults.len > 0
-    
+
     # The UI fragment should be most similar to the UI query
     check uiResults[0].fragment.hash == "frag3hash"
-    
+
     # Test with max results limit
-    let limitedResults = findSimilarFragments(testIndex, "calculate", maxResults = 2)
+    let limitedResults = findSimilarFragments(testIndex, "calculate", maxResults = 2, task = SemanticSimilarity)
     check limitedResults.len <= 2
 
   test "similarity search with folder index":
@@ -289,9 +287,10 @@ suite "Similarity search tests":
     let fragment = RegenFragment(
       startLine: 1,
       endLine: 5,
-      embedding: generateEmbedding("project documentation and setup instructions"),
+      embedding: generateEmbedding("project documentation and setup instructions", SimilarityEmbeddingModel, SemanticSimilarity),
       fragmentType: "markdown_header",
       model: SimilarityEmbeddingModel,
+      task: SemanticSimilarity,
       private: false,
       contentScore: 90,
       hash: "readme_frag_hash"
@@ -314,13 +313,146 @@ suite "Similarity search tests":
     )
     
     let testIndex = RegenIndex(
-      version: "0.1.0",
       kind: regen_folder,
       folder: testFolder
     )
     
     # Test similarity search
-    let results = findSimilarFragments(testIndex, "how to setup the project", maxResults = 5)
+    let results = findSimilarFragments(testIndex, "how to setup the project", maxResults = 5, task = SemanticSimilarity)
     check results.len > 0
     check results[0].similarity > 0.0
     check results[0].file.filename == "readme.md"
+
+  test "dual fragment creation with embeddinggemma":
+    # Test that EmbeddingGemma model creates both RetrievalDocument and SemanticSimilarity fragments
+    # We test the actual fragment creation logic with real embeddings
+
+    const embeddingGemmaModel = "text-embedding-embeddinggemma-300m"
+    const testText = "This is a test document about machine learning algorithms."
+
+    # Test the actual fragment creation with EmbeddingGemma model
+    # This should work since the default model is now EmbeddingGemma
+    try:
+      let retrievalFrag = newRegenFragment(
+        content = testText,
+        filePath = "/docs/ml.md",
+        startLine = 1,
+        endLine = 5,
+        chunkAlgorithm = "simple",
+        fragmentType = "document",
+        task = RetrievalDocument
+      )
+
+      let semanticFrag = newRegenFragment(
+        content = testText,
+        filePath = "/docs/ml.md",
+        startLine = 1,
+        endLine = 5,
+        chunkAlgorithm = "simple",
+        fragmentType = "document",
+        task = SemanticSimilarity
+      )
+
+      # Verify both fragments were created with correct tasks
+      check retrievalFrag.task == RetrievalDocument
+      check semanticFrag.task == SemanticSimilarity
+      check retrievalFrag.model == embeddingGemmaModel  # Should use the model from config
+      check semanticFrag.model == embeddingGemmaModel
+
+      # Verify embeddings are different (different task prompts create different embeddings)
+      check retrievalFrag.embedding != semanticFrag.embedding
+
+      # Create a test index with both fragments
+      let testFile = RegenFile(
+        path: "/docs/ml.md",
+        filename: "ml.md",
+        hash: "mlfilehash",
+        creationTime: 1640995500.0,
+        lastModified: 1640995500.0,
+        fragments: @[retrievalFrag, semanticFrag]
+      )
+
+      let testFolder = RegenFolder(
+        path: "/docs",
+        files: {"/docs/ml.md": testFile}.toTable
+      )
+
+      let testIndex = RegenIndex(
+        kind: regen_folder,
+        folder: testFolder
+      )
+
+      # Test search logic with real embeddings
+      let retrievalResults = findSimilarFragments(
+        testIndex, testText, maxResults = 5,
+        model = embeddingGemmaModel, task = RetrievalQuery
+      )
+      check retrievalResults.len > 0
+      check retrievalResults[0].fragment.task == RetrievalDocument
+
+      let semanticResults = findSimilarFragments(
+        testIndex, testText, maxResults = 5,
+        model = embeddingGemmaModel, task = SemanticSimilarity
+      )
+      check semanticResults.len > 0
+      check semanticResults[0].fragment.task == SemanticSimilarity
+
+    except CatchableError:
+      # If EmbeddingGemma model is not available, skip this test
+      echo "Skipping EmbeddingGemma test - model not available in test environment"
+      skip()
+
+  test "single fragment creation with non-embeddinggemma":
+    # Test that non-EmbeddingGemma models only create SemanticSimilarity fragments
+    const nomicModel = "nomic-embed-text"
+    const testText = "This is a test document about programming."
+
+    # Test the actual fragment creation with nomic model
+    let semanticFrag = newRegenFragment(
+      content = testText,
+      filePath = "/docs/code.md",
+      startLine = 1,
+      endLine = 5,
+      chunkAlgorithm = "simple",
+      fragmentType = "document",
+      task = SemanticSimilarity
+    )
+
+    # Verify fragment was created with correct task
+    check semanticFrag.task == SemanticSimilarity
+    check semanticFrag.model == nomicModel
+
+    # Create a test index with the fragment
+    let testFile = RegenFile(
+      path: "/docs/code.md",
+      filename: "code.md",
+      hash: "codefilehash",
+      creationTime: 1640995600.0,
+      lastModified: 1640995600.0,
+      fragments: @[semanticFrag]
+    )
+
+    let testFolder = RegenFolder(
+      path: "/docs",
+      files: {"/docs/code.md": testFile}.toTable
+    )
+
+    let testIndex = RegenIndex(
+      kind: regen_folder,
+      folder: testFolder
+    )
+
+    # Test that SemanticSimilarity searches work
+    let semanticResults = findSimilarFragments(
+      testIndex, testText, maxResults = 5,
+      model = nomicModel, task = SemanticSimilarity
+    )
+    check semanticResults.len > 0
+    check semanticResults[0].fragment.task == SemanticSimilarity
+
+    # Test that RetrievalQuery searches return no results (no RetrievalDocument fragments)
+    let retrievalResults = findSimilarFragments(
+      testIndex, testText, maxResults = 5,
+      model = nomicModel, task = RetrievalQuery
+    )
+    check retrievalResults.len == 0  # Should be empty since no RetrievalDocument fragments exist

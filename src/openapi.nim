@@ -19,6 +19,7 @@ type
     query*: string
     maxResults*: Option[int]
     model*: Option[string]
+    task*: Option[string]  ## Embedding task type ("RetrievalQuery" or "SemanticSimilarity")
     extensions*: Option[seq[string]]  ## Optional list of extensions to filter by (e.g. [".nim", ".md"]) 
 
   # Simplified ripgrep-like response format
@@ -220,8 +221,15 @@ proc handleEmbeddingSearch*(request: Request) =
     # Extract values with defaults
     let maxResults = reqData.maxResults.get(10)
     let model = reqData.model.get("Qwen/Qwen3-Embedding-0.6B-GGUF")
+    let taskStr = reqData.task.get("RetrievalQuery")
     let exts = reqData.extensions.get(@[])
-    
+
+    # Parse task parameter
+    let task = case taskStr:
+      of "RetrievalQuery": RetrievalQuery
+      of "SemanticSimilarity": SemanticSimilarity
+      else: RetrievalQuery  # Default fallback
+
     # Find all available indexes from config
     let indexPaths = findAllIndexes()
     if indexPaths.len == 0:
@@ -237,7 +245,7 @@ proc handleEmbeddingSearch*(request: Request) =
     for indexPath in indexPaths:
       try:
         let index = readIndexFromFile(indexPath)
-        let results = findSimilarFragments(index, reqData.query, maxResults, model, exts)
+        let results = findSimilarFragments(index, reqData.query, maxResults, model, task, exts)
         allResults.add(results)
       except Exception as e:
         # Log warning but continue with other indexes
@@ -394,9 +402,15 @@ proc buildEmbeddingSearchSpec*(): JsonNode =
                   "description": "Maximum number of results to return"
                 },
                 "model": {
-                  "type": "string", 
-                  "default": "Qwen/Qwen3-Embedding-0.6B-GGUF",
+                  "type": "string",
+                  "default": "text-embedding-embeddinggemma-300m",
                   "description": "The embedding model to use for search"
+                },
+                "task": {
+                  "type": "string",
+                  "enum": ["RetrievalQuery", "SemanticSimilarity"],
+                  "default": "RetrievalQuery",
+                  "description": "The embedding task type to use for the query. RetrievalQuery finds relevant documents (EmbeddingGemma models only), SemanticSimilarity provides semantic matching (all models)"
                 },
                 "extensions": {
                   "type": "array",

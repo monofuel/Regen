@@ -28,6 +28,7 @@ proc chunkSimple*(content: string): seq[RegenFragment] =
         fragmentType: "document",
         model: "",
         chunkAlgorithm: "simple",
+        task: RetrievalDocument,
         private: false,
         contentScore: 0,
         hash: ""

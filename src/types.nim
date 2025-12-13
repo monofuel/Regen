@@ -1,11 +1,14 @@
 ## Shared types for Regen indexing and search functionality
 import std/tables
+import openai_leap
+
+export openai_leap.EmbeddingTask
 
 const
   #DefaultEmbeddingModel* = "Qwen/Qwen3-Embedding-0.6B-GGUF"
   #DefaultApiBaseUrl* = "http://10.11.2.16:1234/v1"
-  DefaultEmbeddingModel* = "nomic-embed-text"
-  DefaultApiBaseUrl* = "http://localhost:11434/v1"
+  DefaultEmbeddingModel* = "text-embedding-embeddinggemma-300m"
+  DefaultApiBaseUrl* = "http://127.0.0.1:1234/v1"  # LM Studio API
 
 type
   RegenIndexType* = enum
@@ -33,6 +36,7 @@ type
     fragmentType*: string
     model*: string
     chunkAlgorithm*: string
+    task*: EmbeddingTask  ## Task type used for embedding generation
     private*: bool
     contentScore*: int
     hash*: string
@@ -61,7 +65,6 @@ type
 
   RegenIndex* = object
     ## a top level wrapper for a regen index.
-    version*: string
     case kind*: RegenIndexType
     of regen_git_repo:
       repo*: RegenGitRepo
@@ -80,4 +83,10 @@ type
     lineNumber*: int
     lineContent*: string
     matchStart*: int
-    matchEnd*: int 
+    matchEnd*: int
+
+  IndexVersionError* = ref object of CatchableError
+    ## Exception raised when index file has incompatible version
+    filepath*: string
+    fileVersion*: int32
+    expectedVersion*: int32 
