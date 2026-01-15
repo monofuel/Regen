@@ -1,9 +1,7 @@
 import
-  unittest,
-  regen,
-  std/tables
+  std/[tables, os, unittest],
+  regen
 
-from std/os import fileExists, removeFile
 
 suite "RegenIndex serialization tests":
 
@@ -327,7 +325,7 @@ suite "Similarity search tests":
     # Test that EmbeddingGemma model creates both RetrievalDocument and SemanticSimilarity fragments
     # We test the actual fragment creation logic with real embeddings
 
-    const embeddingGemmaModel = "text-embedding-embeddinggemma-300m"
+    const embeddingGemmaModel = "embeddinggemma"
     const testText = "This is a test document about machine learning algorithms."
 
     # Test the actual fragment creation with EmbeddingGemma model

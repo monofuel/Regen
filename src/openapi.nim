@@ -403,7 +403,7 @@ proc buildEmbeddingSearchSpec*(): JsonNode =
                 },
                 "model": {
                   "type": "string",
-                  "default": "text-embedding-embeddinggemma-300m",
+                  "default": "embeddinggemma",
                   "description": "The embedding model to use for search"
                 },
                 "task": {

@@ -7,8 +7,8 @@ export openai_leap.EmbeddingTask
 const
   #DefaultEmbeddingModel* = "Qwen/Qwen3-Embedding-0.6B-GGUF"
   #DefaultApiBaseUrl* = "http://10.11.2.16:1234/v1"
-  DefaultEmbeddingModel* = "text-embedding-embeddinggemma-300m"
-  DefaultApiBaseUrl* = "http://127.0.0.1:1234/v1"  # LM Studio API
+  DefaultEmbeddingModel* = "embeddinggemma"
+  DefaultApiBaseUrl* = "http://10.11.2.16:8080/v1"  # localai on solution-nine
 
 type
   RegenIndexType* = enum

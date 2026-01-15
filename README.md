@@ -9,10 +9,9 @@
 - 🔍 Semantic search using embeddings  
 - 💾 No database required - uses flatty for binary serialization
 - 📁 Works with git repos and local folders
-- 🧠 Uses LM Studio for local embeddings (`text-embedding-embeddinggemma-300m`)
 
 
-- Warning: file contents will be sent to the embedding api. defaults to LM Studio at 127.0.0.1:1234/v1 using text-embedding-embeddinggemma-300m.
+- Warning: file contents will be sent to the embedding api. defaults to LM Studio at 10.11.2.16:8080/v1 using embeddinggemma.
 - depending on your files and your environment, you may want to adjust the blacklisted filenames and extensions.
 
 ## 📋 TODO
