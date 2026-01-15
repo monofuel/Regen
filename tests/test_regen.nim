@@ -328,84 +328,78 @@ suite "Similarity search tests":
     const embeddingGemmaModel = "embeddinggemma"
     const testText = "This is a test document about machine learning algorithms."
 
-    # Test the actual fragment creation with EmbeddingGemma model
-    # This should work since the default model is now EmbeddingGemma
-    try:
-      let retrievalFrag = newRegenFragment(
-        content = testText,
-        filePath = "/docs/ml.md",
-        startLine = 1,
-        endLine = 5,
-        chunkAlgorithm = "simple",
-        fragmentType = "document",
-        task = RetrievalDocument
-      )
+    let retrievalFrag = newRegenFragment(
+      content = testText,
+      filePath = "/docs/ml.md",
+      startLine = 1,
+      endLine = 5,
+      chunkAlgorithm = "simple",
+      fragmentType = "document",
+      task = RetrievalDocument
+    )
 
-      let semanticFrag = newRegenFragment(
-        content = testText,
-        filePath = "/docs/ml.md",
-        startLine = 1,
-        endLine = 5,
-        chunkAlgorithm = "simple",
-        fragmentType = "document",
-        task = SemanticSimilarity
-      )
+    let semanticFrag = newRegenFragment(
+      content = testText,
+      filePath = "/docs/ml.md",
+      startLine = 1,
+      endLine = 5,
+      chunkAlgorithm = "simple",
+      fragmentType = "document",
+      task = SemanticSimilarity
+    )
 
-      # Verify both fragments were created with correct tasks
-      check retrievalFrag.task == RetrievalDocument
-      check semanticFrag.task == SemanticSimilarity
-      check retrievalFrag.model == embeddingGemmaModel  # Should use the model from config
-      check semanticFrag.model == embeddingGemmaModel
+    # Verify both fragments were created with correct tasks
+    check retrievalFrag.task == RetrievalDocument
+    check semanticFrag.task == SemanticSimilarity
+    check retrievalFrag.model == embeddingGemmaModel  # Should use the model from config
+    check semanticFrag.model == embeddingGemmaModel
 
-      # Verify embeddings are different (different task prompts create different embeddings)
-      check retrievalFrag.embedding != semanticFrag.embedding
+    # Verify embeddings are different (different task prompts create different embeddings)
+    check retrievalFrag.embedding != semanticFrag.embedding
 
-      # Create a test index with both fragments
-      let testFile = RegenFile(
-        path: "/docs/ml.md",
-        filename: "ml.md",
-        hash: "mlfilehash",
-        creationTime: 1640995500.0,
-        lastModified: 1640995500.0,
-        fragments: @[retrievalFrag, semanticFrag]
-      )
+    # Create a test index with both fragments
+    let testFile = RegenFile(
+      path: "/docs/ml.md",
+      filename: "ml.md",
+      hash: "mlfilehash",
+      creationTime: 1640995500.0,
+      lastModified: 1640995500.0,
+      fragments: @[retrievalFrag, semanticFrag]
+    )
 
-      let testFolder = RegenFolder(
-        path: "/docs",
-        files: {"/docs/ml.md": testFile}.toTable
-      )
+    let testFolder = RegenFolder(
+      path: "/docs",
+      files: {"/docs/ml.md": testFile}.toTable
+    )
 
-      let testIndex = RegenIndex(
-        kind: regen_folder,
-        folder: testFolder
-      )
+    let testIndex = RegenIndex(
+      kind: regen_folder,
+      folder: testFolder
+    )
 
-      # Test search logic with real embeddings
-      let retrievalResults = findSimilarFragments(
-        testIndex, testText, maxResults = 5,
-        model = embeddingGemmaModel, task = RetrievalQuery
-      )
-      check retrievalResults.len > 0
-      check retrievalResults[0].fragment.task == RetrievalDocument
+    # Test search logic with real embeddings
+    let retrievalResults = findSimilarFragments(
+      testIndex, testText, maxResults = 5,
+      model = embeddingGemmaModel, task = RetrievalQuery
+    )
+    check retrievalResults.len > 0
+    check retrievalResults[0].fragment.task == RetrievalDocument
 
-      let semanticResults = findSimilarFragments(
-        testIndex, testText, maxResults = 5,
-        model = embeddingGemmaModel, task = SemanticSimilarity
-      )
-      check semanticResults.len > 0
-      check semanticResults[0].fragment.task == SemanticSimilarity
+    let semanticResults = findSimilarFragments(
+      testIndex, testText, maxResults = 5,
+      model = embeddingGemmaModel, task = SemanticSimilarity
+    )
+    check semanticResults.len > 0
+    check semanticResults[0].fragment.task == SemanticSimilarity
 
-    except CatchableError:
-      # If EmbeddingGemma model is not available, skip this test
-      echo "Skipping EmbeddingGemma test - model not available in test environment"
-      skip()
 
-  test "single fragment creation with non-embeddinggemma":
-    # Test that non-EmbeddingGemma models only create SemanticSimilarity fragments
-    const nomicModel = "nomic-embed-text"
+
+  # TODO this is stupid? what does it mean "default model" why are we testing behavior about it?
+  test "single fragment creation with default model":
+    # Test that the default model creates SemanticSimilarity fragments
     const testText = "This is a test document about programming."
 
-    # Test the actual fragment creation with nomic model
+    # Test the actual fragment creation with default model
     let semanticFrag = newRegenFragment(
       content = testText,
       filePath = "/docs/code.md",
@@ -418,7 +412,6 @@ suite "Similarity search tests":
 
     # Verify fragment was created with correct task
     check semanticFrag.task == SemanticSimilarity
-    check semanticFrag.model == nomicModel
 
     # Create a test index with the fragment
     let testFile = RegenFile(
@@ -440,10 +433,10 @@ suite "Similarity search tests":
       folder: testFolder
     )
 
-    # Test that SemanticSimilarity searches work
+    # Test that SemanticSimilarity searches work with the model's actual name
     let semanticResults = findSimilarFragments(
       testIndex, testText, maxResults = 5,
-      model = nomicModel, task = SemanticSimilarity
+      model = semanticFrag.model, task = SemanticSimilarity
     )
     check semanticResults.len > 0
     check semanticResults[0].fragment.task == SemanticSimilarity
@@ -451,6 +444,6 @@ suite "Similarity search tests":
     # Test that RetrievalQuery searches return no results (no RetrievalDocument fragments)
     let retrievalResults = findSimilarFragments(
       testIndex, testText, maxResults = 5,
-      model = nomicModel, task = RetrievalQuery
+      model = semanticFrag.model, task = RetrievalQuery
     )
     check retrievalResults.len == 0  # Should be empty since no RetrievalDocument fragments exist

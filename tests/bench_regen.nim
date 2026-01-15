@@ -114,8 +114,8 @@ proc benchmarkParallelEmbeddings() =
     
     # Create API instance with this maxInFlight setting
     var testApi = newOpenAiApi(
-      baseUrl = "http://10.11.2.16:11434/v1",
-      apiKey = "ollama", 
+      baseUrl = "http://10.11.2.16:8080/v1",
+      apiKey = "localai", 
       maxInFlight = maxInFlight
     )
     
