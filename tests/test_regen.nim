@@ -2,6 +2,15 @@ import
   std/[tables, os, unittest],
   regen
 
+const
+  AndrewlyticsEmbeddingBaseUrl = "http://10.11.2.16:8091/v1"
+  AndrewlyticsEmbeddingModel = "embeddinggemma-300M-Q8_0"
+
+configureEmbeddingBackend(
+  baseUrl = AndrewlyticsEmbeddingBaseUrl,
+  model = AndrewlyticsEmbeddingModel,
+  apiKey = ""
+)
 
 suite "RegenIndex serialization tests":
 
@@ -325,7 +334,7 @@ suite "Similarity search tests":
     # Test that EmbeddingGemma model creates both RetrievalDocument and SemanticSimilarity fragments
     # We test the actual fragment creation logic with real embeddings
 
-    const embeddingGemmaModel = "embeddinggemma"
+    const embeddingGemmaModel = AndrewlyticsEmbeddingModel
     const testText = "This is a test document about machine learning algorithms."
 
     let retrievalFrag = newRegenFragment(

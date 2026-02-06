@@ -6,6 +6,15 @@ import
   ./types, ./search, ./configs, ./logs, ./fragment
 
 const RegenFileIndexVersion* = 9
+const
+  AdaptiveSplitMinChars = 64
+  AdaptiveSplitMaxDepth = 16
+
+type
+  ChunkSlice* = object
+    content*: string
+    startLine*: int
+    endLine*: int
 
 proc writeIndexToFile*(index: RegenIndex, filepath: string) =
   ## Write a RegenIndex object to a file using flatty serialization with version prefix.
@@ -107,6 +116,154 @@ proc newRegenFragment*(content: string, filePath: string, startLine: int = 1, en
     hash: createFileHash(content)
   )
 
+proc newRegenFragmentWithContext(
+  content: string,
+  filePath: string,
+  startLine: int,
+  endLine: int,
+  chunkAlgorithm: string,
+  fragmentType: string,
+  task: EmbeddingTask
+): RegenFragment =
+  ## Create a fragment and raise contextual errors including file and chunk details on failure.
+  try:
+    result = newRegenFragment(
+      content = content,
+      filePath = filePath,
+      startLine = startLine,
+      endLine = endLine,
+      chunkAlgorithm = chunkAlgorithm,
+      fragmentType = fragmentType,
+      task = task
+    )
+  except Exception:
+    let taskText = $task
+    let startLineText = $startLine
+    let endLineText = $endLine
+    let charCount = $content.len
+    let errorMsg = getCurrentExceptionMsg()
+    raise newException(
+      CatchableError,
+      "Failed to embed fragment for file '" & filePath &
+        "' lines " & startLineText & "-" & endLineText &
+        " using chunker '" & chunkAlgorithm &
+        "' and task '" & taskText &
+        "' (chars=" & charCount & "): " & errorMsg
+    )
+
+proc isOversizeEmbeddingError(message: string): bool =
+  ## Return true when an embedding backend error indicates the input is too large.
+  let lower = message.toLowerAscii()
+  result = (
+    ("too large" in lower) or
+    ("max context size" in lower) or
+    ("larger than max context size" in lower) or
+    ("physical batch size" in lower) or
+    ("maximum context length" in lower) or
+    ("context length exceeded" in lower)
+  )
+
+proc splitChunkForRetry*(content: string, startLine: int, endLine: int): seq[ChunkSlice] =
+  ## Split an oversized chunk into two smaller chunks while preserving line metadata when possible.
+  if content.len < 2:
+    raise newException(ValueError, "Cannot split chunk with fewer than 2 characters.")
+
+  let lines = content.split('\n')
+  let lineRange = endLine - startLine + 1
+  if lineRange > 1 and lines.len > 1:
+    let leftCount = max(1, lines.len div 2)
+    let rightStart = leftCount
+    let rightCount = lines.len - rightStart
+    if rightCount <= 0:
+      raise newException(ValueError, "Failed to split chunk by lines.")
+
+    let leftContent = lines[0 ..< leftCount].join("\n")
+    let rightContent = lines[rightStart .. ^1].join("\n")
+    let leftEndLine = startLine + leftCount - 1
+    let rightStartLine = leftEndLine + 1
+
+    result = @[
+      ChunkSlice(content: leftContent, startLine: startLine, endLine: leftEndLine),
+      ChunkSlice(content: rightContent, startLine: rightStartLine, endLine: endLine)
+    ]
+    return
+
+  let mid = content.len div 2
+  if mid <= 0 or mid >= content.len:
+    raise newException(ValueError, "Failed to split chunk by characters.")
+  let leftContent = content[0 ..< mid]
+  let rightContent = content[mid .. ^1]
+  result = @[
+    ChunkSlice(content: leftContent, startLine: startLine, endLine: endLine),
+    ChunkSlice(content: rightContent, startLine: startLine, endLine: endLine)
+  ]
+
+proc buildFragmentsWithAdaptiveSplit(
+  content: string,
+  filePath: string,
+  startLine: int,
+  endLine: int,
+  chunkAlgorithm: string,
+  fragmentType: string,
+  task: EmbeddingTask,
+  splitDepth: int = 0
+): seq[RegenFragment] =
+  ## Create embeddings for a chunk and recursively split only when backend reports oversize input.
+  try:
+    let frag = newRegenFragmentWithContext(
+      content = content,
+      filePath = filePath,
+      startLine = startLine,
+      endLine = endLine,
+      chunkAlgorithm = chunkAlgorithm,
+      fragmentType = fragmentType,
+      task = task
+    )
+    result = @[frag]
+  except CatchableError:
+    let errorMsg = getCurrentExceptionMsg()
+    if not isOversizeEmbeddingError(errorMsg):
+      raise
+    if splitDepth >= AdaptiveSplitMaxDepth:
+      raise newException(
+        CatchableError,
+        "Adaptive split depth exceeded for file '" & filePath &
+          "' lines " & $startLine & "-" & $endLine &
+          " using chunker '" & chunkAlgorithm & "'. " & errorMsg
+      )
+    if content.len <= AdaptiveSplitMinChars:
+      raise newException(
+        CatchableError,
+        "Cannot split further for file '" & filePath &
+          "' lines " & $startLine & "-" & $endLine &
+          " using chunker '" & chunkAlgorithm &
+          "' because chunk size reached minimum (" & $content.len & " chars). " & errorMsg
+      )
+
+    let splitChunks = splitChunkForRetry(content, startLine, endLine)
+    if splitChunks.len < 2:
+      raise newException(
+        CatchableError,
+        "Adaptive split produced fewer than 2 chunks for file '" & filePath &
+          "' lines " & $startLine & "-" & $endLine &
+          " using chunker '" & chunkAlgorithm & "'. " & errorMsg
+      )
+
+    warn &"Adaptive split for {filePath}:{startLine}-{endLine} chunker={chunkAlgorithm} task={task} depth={splitDepth}"
+    for splitChunk in splitChunks:
+      let splitAlgorithm = chunkAlgorithm & "+split"
+      let childFrags = buildFragmentsWithAdaptiveSplit(
+        content = splitChunk.content,
+        filePath = filePath,
+        startLine = splitChunk.startLine,
+        endLine = splitChunk.endLine,
+        chunkAlgorithm = splitAlgorithm,
+        fragmentType = fragmentType,
+        task = task,
+        splitDepth = splitDepth + 1
+      )
+      result.add(childFrags)
+
 proc newRegenFile*(filePath: string): RegenFile =
   ## Create a new RegenFile by reading and processing the file into multiple fragments.
   let content = readFile(filePath)
@@ -137,7 +294,7 @@ proc newRegenFile*(filePath: string): RegenFile =
 
     if isEmbeddingGemma:
       # EmbeddingGemma: Create both retrieval and semantic similarity fragments
-      let retrievalFrag = newRegenFragment(
+      let retrievalFrags = buildFragmentsWithAdaptiveSplit(
         content = fragText,
         filePath = filePath,
         startLine = ch.startLine,
@@ -146,9 +303,9 @@ proc newRegenFile*(filePath: string): RegenFile =
         fragmentType = fragmentType,
         task = RetrievalDocument
       )
-      fragments.add(retrievalFrag)
+      fragments.add(retrievalFrags)
 
-      let semanticFrag = newRegenFragment(
+      let semanticFrags = buildFragmentsWithAdaptiveSplit(
         content = fragText,
         filePath = filePath,
         startLine = ch.startLine,
@@ -157,10 +314,10 @@ proc newRegenFile*(filePath: string): RegenFile =
         fragmentType = fragmentType,
         task = SemanticSimilarity
       )
-      fragments.add(semanticFrag)
+      fragments.add(semanticFrags)
     else:
       # Non-EmbeddingGemma: Only create semantic similarity fragments
-      let semanticFrag = newRegenFragment(
+      let semanticFrags = buildFragmentsWithAdaptiveSplit(
         content = fragText,
         filePath = filePath,
         startLine = ch.startLine,
@@ -169,12 +326,20 @@ proc newRegenFile*(filePath: string): RegenFile =
         fragmentType = fragmentType,
         task = SemanticSimilarity
       )
-      fragments.add(semanticFrag)
+      fragments.add(semanticFrags)
 
   # Fallback: if no fragments were produced (e.g., empty file), create a single empty fragment
   if fragments.len == 0:
     let fallbackTask = if isEmbeddingGemma: RetrievalDocument else: SemanticSimilarity
-    let frag = newRegenFragment("", filePath, 1, 1, chunkAlgorithm = "simple", fragmentType = fragmentType, task = fallbackTask)
+    let frag = newRegenFragmentWithContext(
+      content = "",
+      filePath = filePath,
+      startLine = 1,
+      endLine = 1,
+      chunkAlgorithm = "simple",
+      fragmentType = fragmentType,
+      task = fallbackTask
+    )
     fragments.add(frag)
 
   result = RegenFile(

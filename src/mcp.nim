@@ -31,7 +31,7 @@ proc buildEmbeddingInputSchema(): JsonNode =
     "properties": {
       "query": {"type": "string", "description": "Semantic query"},
       "maxResults": {"type": "integer", "default": 10, "description": "Maximum number of results"},
-      "model": {"type": "string", "default": "embeddinggemma", "description": "Embedding model"},
+      "model": {"type": "string", "default": "embeddinggemma-300M-Q8_0", "description": "Embedding model"},
       "task": {"type": "string", "enum": ["RetrievalQuery", "SemanticSimilarity"], "default": "RetrievalQuery", "description": "Embedding task type. RetrievalQuery finds relevant documents (EmbeddingGemma models only), SemanticSimilarity provides semantic matching (all models)"},
       "extensions": {"type": "array", "description": "Optional list of file extensions to include (e.g., ['.nim', '.md'])", "items": {"type": "string"}}
     },

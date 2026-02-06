@@ -9,6 +9,14 @@ import
 const
   TestPort = 8888
   TestHost = "localhost"
+  AndrewlyticsEmbeddingBaseUrl = "http://10.11.2.16:8091/v1"
+  AndrewlyticsEmbeddingModel = "embeddinggemma-300M-Q8_0"
+
+configureEmbeddingBackend(
+  baseUrl = AndrewlyticsEmbeddingBaseUrl,
+  model = AndrewlyticsEmbeddingModel,
+  apiKey = ""
+)
 
 suite "Regen Search API Tests":
   var 

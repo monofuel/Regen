@@ -14,16 +14,16 @@ proc chunkFile*(filePath: string, content: string): seq[RegenFragment] =
   let (_, _, ext) = splitFile(filePath)
   let lowerExt = ext.toLower
 
-  result = @[]
-
-  # Always use simple chunking for everything.
-  result.add(chunkSimple(content))
-
-  # file format specific chunking.
+  # Use one primary chunker per file type to avoid duplicate fragment streams.
   if lowerExt in MarkdownExts:
-    result.add(chunkMarkdown(content))
+    result = chunkMarkdown(content)
+    if result.len == 0:
+      result = chunkSimple(content)
   elif lowerExt in NimExts:
-    result.add(chunkNim(content))
+    result = chunkNim(content)
+    if result.len == 0:
+      result = chunkSimple(content)
+  else:
+    result = chunkSimple(content)
   
-
 

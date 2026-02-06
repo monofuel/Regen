@@ -6,7 +6,7 @@ import
   ./types, ./configs
 
 const
-  SimilarityEmbeddingModel* = "nomic-embed-text"
+  SimilarityEmbeddingModel* = "embeddinggemma-300M-Q8_0"
   #SimilarityEmbeddingModel* = "Qwen/Qwen3-Embedding-0.6B-GGUF"
   MaxInFlight* = 10
 

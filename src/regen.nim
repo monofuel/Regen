@@ -287,6 +287,17 @@ proc showTrackedMarkdown*() =
       echo &"- [ ] `{repoPath}`"
       echo &"  - index: _missing_ (expected `{indexPath}`)"
 
+proc configureEmbeddingBackend*(baseUrl: string, model: string, apiKey: string = "") =
+  ## Configure Regen embedding backend settings at runtime.
+  var cfg = loadConfig()
+  cfg.apiBaseUrl = baseUrl
+  cfg.embeddingModel = model
+  cfg.apiKey = apiKey
+  saveConfig(cfg)
+  # Reset and reinitialize client so subsequent searches use the updated backend.
+  localOllamaApi = nil
+  initEmbeddingClient()
+
 proc startApiServer*(args: seq[string]) =
   ## Start the OpenAPI server with optional port and address.
   var port = 8095
