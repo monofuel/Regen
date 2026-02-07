@@ -4,6 +4,7 @@ import ../types
 const
   MaxHeaderSectionLines = 120
   MinHeaderSectionLines = 10
+  MaxHeaderSectionChars = 3500
   MaxMarkdownLineChars = 700
   BlobBase64RunChars = 192
   BlobLineMinChars = 256
@@ -75,6 +76,8 @@ proc chunkMarkdown*(content: string): seq[RegenFragment] =
   ## - Splits at ATX headers (#, ##, ###, ...)
   ## - Keeps lists contiguous within their header section.
   ## - Caps section length to MaxHeaderSectionLines.
+  ## - Caps section size to MaxHeaderSectionChars.
+  ## - Splits at blank lines once MinHeaderSectionLines is reached.
   ## - Isolates very long lines and blob-like payload lines to avoid oversized embedding chunks.
   result = @[]
   let lines = content.split('\n')
@@ -83,32 +86,41 @@ proc chunkMarkdown*(content: string): seq[RegenFragment] =
 
   var sectionStart = 1
   var currentLen = 0
+  var currentChars = 0
   for i, line in lines:
     let lineNumber = i + 1
+    let lineChars = line.len + 1
     let isLongLine = line.len >= MaxMarkdownLineChars
     if isLongLine or isBlobLikeLine(line):
       flushSection(result, sectionStart, lineNumber - 1)
       flushSection(result, lineNumber, lineNumber)
       sectionStart = lineNumber + 1
       currentLen = 0
+      currentChars = 0
       continue
 
     let isHeader = line.len > 0 and line.strip().startsWith('#')
+    let isBlank = line.strip().len == 0
     let isLast = i == lines.len - 1
     currentLen.inc
+    currentChars += lineChars
 
     if (isHeader and i != 0):
-      # Close previous section right before this header
       flushSection(result, sectionStart, i)
       sectionStart = i + 1
       currentLen = 1
+      currentChars = lineChars
       continue
 
-    if currentLen >= MaxHeaderSectionLines:
+    let hitLineCap = currentLen >= MaxHeaderSectionLines
+    let hitCharCap = currentChars >= MaxHeaderSectionChars
+    let hitBlankBoundary = isBlank and currentLen >= MinHeaderSectionLines
+    if hitLineCap or hitCharCap or hitBlankBoundary:
       flushSection(result, sectionStart, i + 1)
       sectionStart = i + 2
       currentLen = 0
+      currentChars = 0
+      continue
 
     if isLast:
       flushSection(result, sectionStart, i + 1)
-
