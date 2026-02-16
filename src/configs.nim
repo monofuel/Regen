@@ -163,8 +163,8 @@ proc addGitRepoToConfig*(repoPath: string) =
     return
   
   let absPath = expandFilename(repoPath)
-  
-  if not dirExists(absPath / ".git"):
+  let gitPath = absPath / ".git"
+  if not (dirExists(gitPath) or fileExists(gitPath)):
     error &"{absPath} is not a git repository"
     return
   

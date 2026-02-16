@@ -626,7 +626,8 @@ proc indexAll*() =
       warn &"Git repo does not exist: {repoPath}"
       continue
     
-    if not dirExists(repoPath / ".git"):
+    let gitPath = repoPath / ".git"
+    if not (dirExists(gitPath) or fileExists(gitPath)):
       warn &"{repoPath} is not a git repository"
       continue
     

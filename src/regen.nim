@@ -381,7 +381,8 @@ proc main() =
         error &"Directory does not exist: {path}"
         return
       let absPath = expandFilename(path)
-      if not dirExists(absPath / ".git"):
+      let gitPath = absPath / ".git"
+      if not (dirExists(gitPath) or fileExists(gitPath)):
         error &"{absPath} is not a git repository"
         return
       let config = loadConfig()
