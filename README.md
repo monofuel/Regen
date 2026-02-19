@@ -11,7 +11,7 @@
 - 📁 Works with git repos and local folders
 
 
-- Warning: file contents will be sent to the embedding api. defaults to LM Studio at 10.11.2.16:8080/v1 using embeddinggemma.
+- Warning: file contents will be sent to the embedding api. defaults to Andrewlytics at 10.11.2.16:8091/v1 using embeddinggemma.
 - depending on your files and your environment, you may want to adjust the blacklisted filenames and extensions.
 
 ## 📋 TODO

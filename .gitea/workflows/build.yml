@@ -28,7 +28,7 @@ jobs:
     - name: Run tests
       # use my local ollama server
       run: |
-        export OPENAI_API_BASE_URL="http://10.11.2.16:8080/v1"
+        export OPENAI_API_BASE_URL="http://10.11.2.16:8091/v1"
         nimble test -y
 
   build-docker:
