@@ -15,3 +15,4 @@ nimcache
 tests/tmp/*
 nimble.develop
 nimble.paths
+*.log
