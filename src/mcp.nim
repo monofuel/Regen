@@ -209,14 +209,13 @@ proc startMcpHttpServer*(args: seq[string]) =
   if args.len > 2:
     address = args[2]
 
-  discard loadConfig()
+  let cfg = loadConfig()
   info &"Starting Regen MCP HTTP server on {address}:{port}"
 
   let mcpServer = newMcpServer(McpServerName, McpServerVersion)
   registerRegenTools(mcpServer)
 
   # Optional Bearer auth: use config.apiKey if present
-  let cfg = loadConfig()
   if cfg.apiKey.len == 0:
     error "API Key not configured. Set it in the Regen config before starting the MCP server."
     quit(1)
